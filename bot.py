@@ -2,7 +2,6 @@ import requests
 import schedule
 import time
 import random
-import os
 from datetime import datetime
 
 # ============================================================
@@ -13,6 +12,8 @@ TELEGRAM_CHANNEL = "@promostechbr01"
 
 AMAZON_PARTNER_TAG = "digitalvaiven-20"
 SHOPEE_AFFILIATE_ID = "18375371047"
+MELI_CLIENT_ID = "697990339549885"
+MELI_CLIENT_SECRET = "xzKEHd0bTveL6gNW636CSGt2JqjEJgdL"
 MELI_AFFILIATE_ID = "r20251127144407"
 
 DESCONTO_MINIMO = 15
@@ -20,6 +21,7 @@ HORARIOS = ["08:00", "12:00", "15:00", "18:00", "21:00"]
 # ============================================================
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+meli_access_token = None
 
 PRODUTOS_AMAZON = [
     {"asin": "B0BDHX8Z63", "nome": "Echo Dot 5ª Geração Alexa", "preco_original": 349.00, "preco_atual": 249.00},
@@ -29,7 +31,6 @@ PRODUTOS_AMAZON = [
     {"asin": "B0BLP46VCM", "nome": "Fone JBL Tune 510BT Bluetooth", "preco_original": 299.00, "preco_atual": 189.00},
 ]
 
-# MELI tem mais categorias para variar bastante
 CATEGORIAS_TECH_MELI = [
     "fone bluetooth",
     "smartwatch",
@@ -45,13 +46,34 @@ CATEGORIAS_TECH_MELI = [
     "monitor",
     "ssd externo",
     "memoria ram",
-    "placa de video",
     "controle xbox",
     "controle playstation",
     "caixa de som bluetooth",
     "webcam full hd",
-    "microfone usb"
+    "microfone usb",
+    "leitor de cartao"
 ]
+
+
+def obter_token_meli():
+    global meli_access_token
+    try:
+        url = "https://api.mercadolibre.com/oauth/token"
+        payload = {
+            "grant_type": "client_credentials",
+            "client_id": MELI_CLIENT_ID,
+            "client_secret": MELI_CLIENT_SECRET
+        }
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            meli_access_token = response.json().get("access_token")
+            print(f"✅ Token MELI obtido!")
+            return True
+        else:
+            print(f"❌ Erro token MELI: {response.text}")
+    except Exception as e:
+        print(f"❌ Erro ao obter token: {e}")
+    return False
 
 
 def enviar_telegram(mensagem, imagem_url=None):
@@ -71,15 +93,12 @@ def enviar_telegram(mensagem, imagem_url=None):
                 "text": mensagem,
                 "parse_mode": "HTML"
             }
-
         response = requests.post(url, json=payload, timeout=10)
         result = response.json()
-
         if result.get("ok"):
             print(f"✅ Mensagem enviada!")
         else:
             print(f"❌ Erro: {result}")
-
     except Exception as e:
         print(f"❌ Erro Telegram: {e}")
 
@@ -92,6 +111,105 @@ def calcular_desconto(original, atual):
     if original and atual and original > atual:
         return round(((original - atual) / original) * 100)
     return 0
+
+
+def gerar_link_afiliado_meli(permalink):
+    """Gera link de afiliado oficial do MELI"""
+    try:
+        if not meli_access_token:
+            obter_token_meli()
+
+        url = "https://api.mercadolibre.com/v1/affiliate/links"
+        headers = {
+            "Authorization": f"Bearer {meli_access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "url": permalink,
+            "publisher_id": MELI_AFFILIATE_ID
+        }
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        if response.status_code == 200:
+            return response.json().get("short_url") or permalink
+    except Exception as e:
+        print(f"⚠️ Erro ao gerar link afiliado: {e}")
+
+    # Fallback: link direto com parâmetro de afiliado
+    return f"{permalink}?matt_tool=23829216&matt_word={MELI_AFFILIATE_ID}"
+
+
+def buscar_meli():
+    global meli_access_token
+
+    try:
+        if not meli_access_token:
+            obter_token_meli()
+
+        categorias = random.sample(CATEGORIAS_TECH_MELI, 3)
+
+        for keyword in categorias:
+            headers = {"Authorization": f"Bearer {meli_access_token}"} if meli_access_token else {}
+            url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=20"
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 401:
+                obter_token_meli()
+                headers = {"Authorization": f"Bearer {meli_access_token}"}
+                response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code != 200:
+                continue
+
+            produtos = response.json().get("results", [])
+            melhores = []
+
+            for p in produtos:
+                preco_atual = p.get("price", 0)
+                preco_original = p.get("original_price") or 0
+                desconto = calcular_desconto(preco_original, preco_atual)
+                imagem = p.get("thumbnail", "").replace("I.jpg", "O.jpg")
+
+                if desconto >= DESCONTO_MINIMO and preco_atual > 50:
+                    permalink = p.get("permalink", "")
+                    melhores.append({
+                        "titulo": p.get("title", "Produto Tech"),
+                        "preco_atual": preco_atual,
+                        "preco_original": preco_original,
+                        "desconto": desconto,
+                        "permalink": permalink,
+                        "imagem": imagem,
+                        "loja": "Mercado Livre"
+                    })
+
+            if melhores:
+                melhor = max(melhores, key=lambda x: x["desconto"])
+                melhor["link"] = gerar_link_afiliado_meli(melhor["permalink"])
+                return melhor
+
+        # Fallback sem desconto
+        keyword = random.choice(CATEGORIAS_TECH_MELI)
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=5"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            produtos = response.json().get("results", [])
+            if produtos:
+                p = produtos[0]
+                preco_atual = p.get("price", 0)
+                preco_original = p.get("original_price") or preco_atual
+                permalink = p.get("permalink", "")
+                return {
+                    "titulo": p.get("title", "Produto Tech"),
+                    "preco_atual": preco_atual,
+                    "preco_original": preco_original,
+                    "desconto": calcular_desconto(preco_original, preco_atual),
+                    "link": gerar_link_afiliado_meli(permalink),
+                    "imagem": p.get("thumbnail", "").replace("I.jpg", "O.jpg"),
+                    "loja": "Mercado Livre"
+                }
+
+    except Exception as e:
+        print(f"❌ Erro MELI: {e}")
+    return None
 
 
 def buscar_amazon():
@@ -110,70 +228,6 @@ def buscar_amazon():
         }
     except Exception as e:
         print(f"❌ Erro Amazon: {e}")
-    return None
-
-
-def buscar_meli():
-    try:
-        # Tenta até 3 categorias diferentes para achar um produto com desconto
-        categorias = random.sample(CATEGORIAS_TECH_MELI, 3)
-
-        for keyword in categorias:
-            url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=20"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            response = requests.get(url, headers=headers, timeout=10)
-
-            if response.status_code != 200:
-                continue
-
-            data = response.json()
-            produtos = data.get("results", [])
-
-            melhores = []
-            for p in produtos:
-                preco_atual = p.get("price", 0)
-                preco_original = p.get("original_price") or 0
-                desconto = calcular_desconto(preco_original, preco_atual)
-                imagem = p.get("thumbnail", "").replace("I.jpg", "O.jpg")
-
-                if desconto >= DESCONTO_MINIMO and preco_atual > 50:
-                    melhores.append({
-                        "titulo": p.get("title", "Produto Tech"),
-                        "preco_atual": preco_atual,
-                        "preco_original": preco_original,
-                        "desconto": desconto,
-                        "link": f"{p.get('permalink', '')}?afiliado={MELI_AFFILIATE_ID}",
-                        "imagem": imagem,
-                        "loja": "Mercado Livre"
-                    })
-
-            if melhores:
-                # Pega o produto com maior desconto
-                return max(melhores, key=lambda x: x["desconto"])
-
-        # Se não achou com desconto em nenhuma categoria, pega qualquer produto tech
-        keyword = random.choice(CATEGORIAS_TECH_MELI)
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=5"
-        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-
-        if response.status_code == 200:
-            produtos = response.json().get("results", [])
-            if produtos:
-                p = produtos[0]
-                preco_atual = p.get("price", 0)
-                preco_original = p.get("original_price") or preco_atual
-                return {
-                    "titulo": p.get("title", "Produto Tech"),
-                    "preco_atual": preco_atual,
-                    "preco_original": preco_original,
-                    "desconto": calcular_desconto(preco_original, preco_atual),
-                    "link": f"{p.get('permalink', '')}?afiliado={MELI_AFFILIATE_ID}",
-                    "imagem": p.get("thumbnail", "").replace("I.jpg", "O.jpg"),
-                    "loja": "Mercado Livre"
-                }
-
-    except Exception as e:
-        print(f"❌ Erro MELI: {e}")
     return None
 
 
@@ -203,7 +257,7 @@ def montar_mensagem(oferta):
 def postar_oferta():
     print(f"\n🔍 [{datetime.now().strftime('%H:%M:%S')}] Buscando ofertas...")
 
-    # MELI tem 70% de chance de ser escolhido, Amazon 30%
+    # MELI 70% de chance, Amazon 30%
     sorteio = random.randint(1, 10)
     if sorteio <= 7:
         oferta = buscar_meli()
@@ -224,11 +278,13 @@ def postar_oferta():
 
 def iniciar_agendamento():
     print("🚀 Iniciando bot...")
+    obter_token_meli()
+
     enviar_telegram(
         "🤖 <b>Bot Promos Tech BR atualizado!</b>\n\n"
-        "✅ 5 postagens por dia\n"
-        "✅ Foco em Mercado Livre\n"
-        "✅ Ofertas reais com desconto\n\n"
+        "✅ Mercado Livre API oficial conectada\n"
+        "✅ Links de afiliado reais\n"
+        "✅ 5 postagens por dia\n\n"
         "⏰ Horários: 08h | 12h | 15h | 18h | 21h\n\n"
         "📢 @promostechbr01 | Promos Tech BR"
     )
@@ -238,6 +294,9 @@ def iniciar_agendamento():
     for horario in HORARIOS:
         schedule.every().day.at(horario).do(postar_oferta)
         print(f"⏰ Agendado para {horario}")
+
+    # Renova token MELI a cada 5 horas
+    schedule.every(5).hours.do(obter_token_meli)
 
     print(f"\n✅ Bot rodando! Postagens às: {', '.join(HORARIOS)}\n")
 
