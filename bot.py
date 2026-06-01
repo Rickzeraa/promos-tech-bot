@@ -2,6 +2,7 @@ import requests
 import schedule
 import time
 import random
+import os
 from datetime import datetime
 
 # ============================================================
@@ -125,7 +126,7 @@ def buscar_meli():
                         "preco_atual": preco_atual,
                         "preco_original": preco_original,
                         "desconto": desconto,
-                        "link": f"{p.get('permalink', '')}?matt_tool=97066059&matt_word=&matt_source=google&matt_campaign_id=14302636272&matt_ad_group_id=134553712300&matt_match_type=&matt_network=g&matt_device=c&matt_creative=539354956678&matt_keyword=&matt_ad_position=&matt_ad_type=pla&matt_merchant_id=&matt_product_id=&matt_product_partition_id=&matt_target_id=&ref=pdp_seller_info&deal_print_id=&coupon_filter=&afiliado={MELI_AFFILIATE_ID}",
+                        "link": f"{p.get('permalink', '')}?afiliado={MELI_AFFILIATE_ID}",
                         "imagem": imagem,
                         "loja": "Mercado Livre"
                     })
@@ -133,7 +134,6 @@ def buscar_meli():
             if melhores:
                 return max(melhores, key=lambda x: x["desconto"])
 
-            # Se não achou com desconto, pega o mais barato com link afiliado
             if produtos:
                 p = produtos[0]
                 preco_atual = p.get("price", 0)
@@ -222,26 +222,24 @@ def postar_oferta():
         print("⚠️  Nenhuma oferta encontrada")
 
 
-def testar_bot():
-    msg = (
-        "🤖 <b>Bot Promos Tech BR atualizado!</b>\n\n"
+def iniciar_agendamento():
+    # Posta uma oferta imediatamente ao iniciar
+    print("🚀 Iniciando bot...")
+    enviar_telegram(
+        "🤖 <b>Bot Promos Tech BR online!</b>\n\n"
         "✅ Amazon conectada\n"
         "✅ Mercado Livre conectado\n"
         "✅ Shopee conectada\n\n"
-        "🔍 Buscando as melhores ofertas de tech...\n\n"
         "📢 @promostechbr01 | Promos Tech BR"
     )
-    enviar_telegram(msg)
-    print("✅ Mensagem de teste enviada!")
+    postar_oferta()
 
-
-def iniciar_agendamento():
+    # Agenda os horários
     for horario in HORARIOS:
         schedule.every().day.at(horario).do(postar_oferta)
         print(f"⏰ Agendado para {horario}")
 
-    print(f"\n🚀 Bot rodando! Postagens às: {', '.join(HORARIOS)}")
-    print("Pressione Ctrl+C para parar\n")
+    print(f"\n✅ Bot rodando! Postagens às: {', '.join(HORARIOS)}\n")
 
     while True:
         schedule.run_pending()
@@ -252,14 +250,4 @@ if __name__ == "__main__":
     print("=" * 50)
     print("🤖 PROMOS TECH BR BOT")
     print("=" * 50)
-
-    testar_bot()
-
-    print("\n1 - Rodar agendado (postar nos horários)")
-    print("2 - Postar agora (teste)")
-    opcao = input("\nEscolha (1 ou 2): ").strip()
-
-    if opcao == "2":
-        postar_oferta()
-    else:
-        iniciar_agendamento()
+    iniciar_agendamento()
