@@ -15,8 +15,8 @@ AMAZON_PARTNER_TAG = "digitalvaiven-20"
 SHOPEE_AFFILIATE_ID = "18375371047"
 MELI_AFFILIATE_ID = "r20251127144407"
 
-DESCONTO_MINIMO = 20
-HORARIOS = ["12:00", "18:00", "21:00"]
+DESCONTO_MINIMO = 15
+HORARIOS = ["08:00", "12:00", "15:00", "18:00", "21:00"]
 # ============================================================
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
@@ -29,7 +29,8 @@ PRODUTOS_AMAZON = [
     {"asin": "B0BLP46VCM", "nome": "Fone JBL Tune 510BT Bluetooth", "preco_original": 299.00, "preco_atual": 189.00},
 ]
 
-CATEGORIAS_TECH = [
+# MELI tem mais categorias para variar bastante
+CATEGORIAS_TECH_MELI = [
     "fone bluetooth",
     "smartwatch",
     "carregador turbo",
@@ -39,7 +40,17 @@ CATEGORIAS_TECH = [
     "teclado bluetooth",
     "powerbank",
     "câmera ip wifi",
-    "headset gamer"
+    "headset gamer",
+    "notebook",
+    "monitor",
+    "ssd externo",
+    "memoria ram",
+    "placa de video",
+    "controle xbox",
+    "controle playstation",
+    "caixa de som bluetooth",
+    "webcam full hd",
+    "microfone usb"
 ]
 
 
@@ -104,19 +115,24 @@ def buscar_amazon():
 
 def buscar_meli():
     try:
-        keyword = random.choice(CATEGORIAS_TECH)
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=10"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=10)
+        # Tenta até 3 categorias diferentes para achar um produto com desconto
+        categorias = random.sample(CATEGORIAS_TECH_MELI, 3)
 
-        if response.status_code == 200:
+        for keyword in categorias:
+            url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=20"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code != 200:
+                continue
+
             data = response.json()
             produtos = data.get("results", [])
 
             melhores = []
             for p in produtos:
                 preco_atual = p.get("price", 0)
-                preco_original = p.get("original_price") or preco_atual
+                preco_original = p.get("original_price") or 0
                 desconto = calcular_desconto(preco_original, preco_atual)
                 imagem = p.get("thumbnail", "").replace("I.jpg", "O.jpg")
 
@@ -132,16 +148,25 @@ def buscar_meli():
                     })
 
             if melhores:
+                # Pega o produto com maior desconto
                 return max(melhores, key=lambda x: x["desconto"])
 
+        # Se não achou com desconto em nenhuma categoria, pega qualquer produto tech
+        keyword = random.choice(CATEGORIAS_TECH_MELI)
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=5"
+        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+
+        if response.status_code == 200:
+            produtos = response.json().get("results", [])
             if produtos:
                 p = produtos[0]
                 preco_atual = p.get("price", 0)
+                preco_original = p.get("original_price") or preco_atual
                 return {
                     "titulo": p.get("title", "Produto Tech"),
                     "preco_atual": preco_atual,
-                    "preco_original": p.get("original_price") or preco_atual,
-                    "desconto": 0,
+                    "preco_original": preco_original,
+                    "desconto": calcular_desconto(preco_original, preco_atual),
                     "link": f"{p.get('permalink', '')}?afiliado={MELI_AFFILIATE_ID}",
                     "imagem": p.get("thumbnail", "").replace("I.jpg", "O.jpg"),
                     "loja": "Mercado Livre"
@@ -149,28 +174,6 @@ def buscar_meli():
 
     except Exception as e:
         print(f"❌ Erro MELI: {e}")
-    return None
-
-
-def buscar_shopee():
-    try:
-        keyword = random.choice(CATEGORIAS_TECH)
-        preco = round(random.uniform(49.90, 299.90), 2)
-        preco_original = round(preco * random.uniform(1.2, 1.6), 2)
-        desconto = calcular_desconto(preco_original, preco)
-        url = f"https://shopee.com.br/search?keyword={keyword.replace(' ', '%20')}&affiliateID={SHOPEE_AFFILIATE_ID}"
-
-        return {
-            "titulo": f"Oferta Tech: {keyword.title()}",
-            "preco_atual": preco,
-            "preco_original": preco_original,
-            "desconto": desconto,
-            "link": url,
-            "imagem": None,
-            "loja": "Shopee"
-        }
-    except Exception as e:
-        print(f"❌ Erro Shopee: {e}")
     return None
 
 
@@ -200,41 +203,38 @@ def montar_mensagem(oferta):
 def postar_oferta():
     print(f"\n🔍 [{datetime.now().strftime('%H:%M:%S')}] Buscando ofertas...")
 
-    lojas = ["meli", "amazon", "shopee"]
-    random.shuffle(lojas)
-
-    oferta = None
-    for loja in lojas:
-        if loja == "amazon":
+    # MELI tem 70% de chance de ser escolhido, Amazon 30%
+    sorteio = random.randint(1, 10)
+    if sorteio <= 7:
+        oferta = buscar_meli()
+        if not oferta:
             oferta = buscar_amazon()
-        elif loja == "meli":
+    else:
+        oferta = buscar_amazon()
+        if not oferta:
             oferta = buscar_meli()
-        elif loja == "shopee":
-            oferta = buscar_shopee()
-        if oferta:
-            break
 
     if oferta:
         mensagem = montar_mensagem(oferta)
         enviar_telegram(mensagem, oferta.get("imagem"))
-        print(f"✅ Postado: {oferta['titulo'][:50]}...")
+        print(f"✅ Postado [{oferta['loja']}]: {oferta['titulo'][:50]}...")
     else:
         print("⚠️  Nenhuma oferta encontrada")
 
 
 def iniciar_agendamento():
-    # Posta uma oferta imediatamente ao iniciar
     print("🚀 Iniciando bot...")
     enviar_telegram(
-        "🤖 <b>Bot Promos Tech BR online!</b>\n\n"
-        "✅ Amazon conectada\n"
-        "✅ Mercado Livre conectado\n"
-        "✅ Shopee conectada\n\n"
+        "🤖 <b>Bot Promos Tech BR atualizado!</b>\n\n"
+        "✅ 5 postagens por dia\n"
+        "✅ Foco em Mercado Livre\n"
+        "✅ Ofertas reais com desconto\n\n"
+        "⏰ Horários: 08h | 12h | 15h | 18h | 21h\n\n"
         "📢 @promostechbr01 | Promos Tech BR"
     )
+
     postar_oferta()
 
-    # Agenda os horários
     for horario in HORARIOS:
         schedule.every().day.at(horario).do(postar_oferta)
         print(f"⏰ Agendado para {horario}")
