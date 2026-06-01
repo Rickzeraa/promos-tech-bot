@@ -12,6 +12,7 @@ TELEGRAM_CHANNEL = "@promostechbr01"
 
 AMAZON_PARTNER_TAG = "digitalvaiven-20"
 SHOPEE_AFFILIATE_ID = "18375371047"
+MELI_AFFILIATE_ID = "r20251127144407"
 
 DESCONTO_MINIMO = 20
 HORARIOS = ["12:00", "18:00", "21:00"]
@@ -20,14 +21,14 @@ HORARIOS = ["12:00", "18:00", "21:00"]
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 PRODUTOS_AMAZON = [
-    {"asin": "B0BDHX8Z63", "nome": "Echo Dot 5ª Geração", "preco_original": 349.00, "preco_atual": 249.00},
-    {"asin": "B09B8RVKGK", "nome": "Fire TV Stick 4K", "preco_original": 399.00, "preco_atual": 279.00},
-    {"asin": "B0C4NXZQRD", "nome": "Kindle 16GB", "preco_original": 499.00, "preco_atual": 349.00},
-    {"asin": "B08N5KWB9H", "nome": "Echo Show 5", "preco_original": 599.00, "preco_atual": 399.00},
-    {"asin": "B0BLP46VCM", "nome": "Fone JBL Tune 510BT", "preco_original": 299.00, "preco_atual": 189.00},
+    {"asin": "B0BDHX8Z63", "nome": "Echo Dot 5ª Geração Alexa", "preco_original": 349.00, "preco_atual": 249.00},
+    {"asin": "B09B8RVKGK", "nome": "Fire TV Stick 4K Streaming", "preco_original": 399.00, "preco_atual": 279.00},
+    {"asin": "B0C4NXZQRD", "nome": "Kindle 16GB Leitura", "preco_original": 499.00, "preco_atual": 349.00},
+    {"asin": "B08N5KWB9H", "nome": "Echo Show 5 Tela 5.5\"", "preco_original": 599.00, "preco_atual": 399.00},
+    {"asin": "B0BLP46VCM", "nome": "Fone JBL Tune 510BT Bluetooth", "preco_original": 299.00, "preco_atual": 189.00},
 ]
 
-CATEGORIAS_SHOPEE = [
+CATEGORIAS_TECH = [
     "fone bluetooth",
     "smartwatch",
     "carregador turbo",
@@ -35,9 +36,9 @@ CATEGORIAS_SHOPEE = [
     "cabo usb-c",
     "mouse sem fio",
     "teclado bluetooth",
-    "suporte celular",
     "powerbank",
-    "câmera ip"
+    "câmera ip wifi",
+    "headset gamer"
 ]
 
 
@@ -86,7 +87,6 @@ def buscar_amazon():
         produto = random.choice(PRODUTOS_AMAZON)
         desconto = calcular_desconto(produto["preco_original"], produto["preco_atual"])
         link = f"https://www.amazon.com.br/dp/{produto['asin']}?tag={AMAZON_PARTNER_TAG}"
-
         return {
             "titulo": produto["nome"],
             "preco_atual": produto["preco_atual"],
@@ -101,22 +101,71 @@ def buscar_amazon():
     return None
 
 
+def buscar_meli():
+    try:
+        keyword = random.choice(CATEGORIAS_TECH)
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=10"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+            produtos = data.get("results", [])
+
+            melhores = []
+            for p in produtos:
+                preco_atual = p.get("price", 0)
+                preco_original = p.get("original_price") or preco_atual
+                desconto = calcular_desconto(preco_original, preco_atual)
+                imagem = p.get("thumbnail", "").replace("I.jpg", "O.jpg")
+
+                if desconto >= DESCONTO_MINIMO and preco_atual > 50:
+                    melhores.append({
+                        "titulo": p.get("title", "Produto Tech"),
+                        "preco_atual": preco_atual,
+                        "preco_original": preco_original,
+                        "desconto": desconto,
+                        "link": f"{p.get('permalink', '')}?matt_tool=97066059&matt_word=&matt_source=google&matt_campaign_id=14302636272&matt_ad_group_id=134553712300&matt_match_type=&matt_network=g&matt_device=c&matt_creative=539354956678&matt_keyword=&matt_ad_position=&matt_ad_type=pla&matt_merchant_id=&matt_product_id=&matt_product_partition_id=&matt_target_id=&ref=pdp_seller_info&deal_print_id=&coupon_filter=&afiliado={MELI_AFFILIATE_ID}",
+                        "imagem": imagem,
+                        "loja": "Mercado Livre"
+                    })
+
+            if melhores:
+                return max(melhores, key=lambda x: x["desconto"])
+
+            # Se não achou com desconto, pega o mais barato com link afiliado
+            if produtos:
+                p = produtos[0]
+                preco_atual = p.get("price", 0)
+                return {
+                    "titulo": p.get("title", "Produto Tech"),
+                    "preco_atual": preco_atual,
+                    "preco_original": p.get("original_price") or preco_atual,
+                    "desconto": 0,
+                    "link": f"{p.get('permalink', '')}?afiliado={MELI_AFFILIATE_ID}",
+                    "imagem": p.get("thumbnail", "").replace("I.jpg", "O.jpg"),
+                    "loja": "Mercado Livre"
+                }
+
+    except Exception as e:
+        print(f"❌ Erro MELI: {e}")
+    return None
+
+
 def buscar_shopee():
     try:
-        keyword = random.choice(CATEGORIAS_SHOPEE)
-        url = f"https://shopee.com.br/search?keyword={keyword.replace(' ', '%20')}"
-        link_afiliado = f"https://shope.ee/affiliate?id={SHOPEE_AFFILIATE_ID}&url={url}"
-
+        keyword = random.choice(CATEGORIAS_TECH)
         preco = round(random.uniform(49.90, 299.90), 2)
         preco_original = round(preco * random.uniform(1.2, 1.6), 2)
         desconto = calcular_desconto(preco_original, preco)
+        url = f"https://shopee.com.br/search?keyword={keyword.replace(' ', '%20')}&affiliateID={SHOPEE_AFFILIATE_ID}"
 
         return {
             "titulo": f"Oferta Tech: {keyword.title()}",
             "preco_atual": preco,
             "preco_original": preco_original,
             "desconto": desconto,
-            "link": link_afiliado,
+            "link": url,
             "imagem": None,
             "loja": "Shopee"
         }
@@ -151,13 +200,15 @@ def montar_mensagem(oferta):
 def postar_oferta():
     print(f"\n🔍 [{datetime.now().strftime('%H:%M:%S')}] Buscando ofertas...")
 
-    lojas = ["amazon", "shopee"]
+    lojas = ["meli", "amazon", "shopee"]
     random.shuffle(lojas)
 
     oferta = None
     for loja in lojas:
         if loja == "amazon":
             oferta = buscar_amazon()
+        elif loja == "meli":
+            oferta = buscar_meli()
         elif loja == "shopee":
             oferta = buscar_shopee()
         if oferta:
@@ -173,10 +224,12 @@ def postar_oferta():
 
 def testar_bot():
     msg = (
-        "🤖 <b>Bot Promos Tech BR ativado!</b>\n\n"
-        "✅ Conexão com Telegram OK\n"
+        "🤖 <b>Bot Promos Tech BR atualizado!</b>\n\n"
+        "✅ Amazon conectada\n"
+        "✅ Mercado Livre conectado\n"
+        "✅ Shopee conectada\n\n"
         "🔍 Buscando as melhores ofertas de tech...\n\n"
-        "📢 @promostechbr01"
+        "📢 @promostechbr01 | Promos Tech BR"
     )
     enviar_telegram(msg)
     print("✅ Mensagem de teste enviada!")
