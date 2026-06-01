@@ -11,7 +11,6 @@ TELEGRAM_TOKEN = "8111527242:AAH2Bq-QgIgy8BsYVmgwAE-fs22WWGId9zE"
 TELEGRAM_CHANNEL = "@promostechbr01"
 
 AMAZON_PARTNER_TAG = "digitalvaiven-20"
-SHOPEE_AFFILIATE_ID = "18375371047"
 MELI_CLIENT_ID = "697990339549885"
 MELI_CLIENT_SECRET = "xzKEHd0bTveL6gNW636CSGt2JqjEJgdL"
 MELI_AFFILIATE_ID = "r20251127144407"
@@ -24,34 +23,32 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 meli_access_token = None
 
 PRODUTOS_AMAZON = [
-    {"asin": "B0BDHX8Z63", "nome": "Echo Dot 5ª Geração Alexa", "preco_original": 349.00, "preco_atual": 249.00},
-    {"asin": "B09B8RVKGK", "nome": "Fire TV Stick 4K Streaming", "preco_original": 399.00, "preco_atual": 279.00},
-    {"asin": "B0C4NXZQRD", "nome": "Kindle 16GB Leitura", "preco_original": 499.00, "preco_atual": 349.00},
-    {"asin": "B08N5KWB9H", "nome": "Echo Show 5 Tela 5.5\"", "preco_original": 599.00, "preco_atual": 399.00},
-    {"asin": "B0BLP46VCM", "nome": "Fone JBL Tune 510BT Bluetooth", "preco_original": 299.00, "preco_atual": 189.00},
+    {"asin": "B0DYVPCX34", "nome": "Smartphone Samsung Galaxy", "preco_original": 3499.00, "preco_atual": 2199.99},
+    {"asin": "B098YHFT9S", "nome": "Multifuncional Epson EcoTank L3250 Colorida", "preco_original": 1379.00, "preco_atual": 1011.08},
+    {"asin": "B0FPYXKBJG", "nome": "Celular Samsung Galaxy 256GB 50MP", "preco_original": 1899.00, "preco_atual": 1167.00},
+    {"asin": "B0DXR7GNWJ", "nome": "Apple iPhone 16e 128GB", "preco_original": 5799.00, "preco_atual": 3460.54},
+    {"asin": "B0FMFRFNWG", "nome": "Samsung Galaxy Lite 128GB Cinza", "preco_original": 3149.00, "preco_atual": 2336.68},
+    {"asin": "B0FK1NJLXB", "nome": "JBL Boombox Bluetooth Lossless", "preco_original": 3199.00, "preco_atual": 2488.00},
+    {"asin": "B0CVCLGV1W", "nome": "Smartwatch Samsung Galaxy Watch", "preco_original": 549.00, "preco_atual": 224.90},
+    {"asin": "B0F5X6L24G", "nome": "Samsung Smart TV Crystal 4K 2025", "preco_original": 3799.99, "preco_atual": 3399.90},
+    {"asin": "B07Y2G7VX5", "nome": "Headphone HV-H2002d com Microfone", "preco_original": 294.60, "preco_atual": 139.99},
+    {"asin": "B0GH2SC1XG", "nome": "Smart TV TCL 55\" 4K Google Assistente", "preco_original": 3399.00, "preco_atual": 2569.48},
+    {"asin": "B0FRJV1B75", "nome": "Monitor LG 43\" 4K Profissional Ultrafino", "preco_original": 1999.00, "preco_atual": 1791.22},
+    {"asin": "B0FVBH3L33", "nome": "JBL Bluetooth Portátil Auracast", "preco_original": 559.00, "preco_atual": 450.00},
+    {"asin": "B0DZK3M8GJ", "nome": "Apple iPad 2025 Wi-Fi 128GB", "preco_original": 4499.00, "preco_atual": 3799.00},
+    {"asin": "B0CRTYZG5C", "nome": "Soundcore Fone Cancelamento de Ruído Bluetooth", "preco_original": 369.00, "preco_atual": 205.00},
+    {"asin": "B09VCHQHZ6", "nome": "Processador AMD Ryzen 7 5700X", "preco_original": 2186.92, "preco_atual": 1149.99},
+    {"asin": "B0CT922NH7", "nome": "JBL Soundbar Bluetooth Cinema Subwoofer", "preco_original": 1469.00, "preco_atual": 946.32},
+    {"asin": "B0765KZ264", "nome": "Suporte Ergonômico Articulado para Monitor", "preco_original": 299.90, "preco_atual": 157.50},
+    {"asin": "B0FPHYC9FQ", "nome": "Celular Samsung Galaxy 128GB Preto", "preco_original": 799.00, "preco_atual": 590.90},
 ]
 
 CATEGORIAS_TECH_MELI = [
-    "fone bluetooth",
-    "smartwatch",
-    "carregador turbo",
-    "hub usb",
-    "cabo usb-c",
-    "mouse sem fio",
-    "teclado bluetooth",
-    "powerbank",
-    "câmera ip wifi",
-    "headset gamer",
-    "notebook",
-    "monitor",
-    "ssd externo",
-    "memoria ram",
-    "controle xbox",
-    "controle playstation",
-    "caixa de som bluetooth",
-    "webcam full hd",
-    "microfone usb",
-    "leitor de cartao"
+    "fone bluetooth", "smartwatch", "carregador turbo", "hub usb",
+    "cabo usb-c", "mouse sem fio", "teclado bluetooth", "powerbank",
+    "câmera ip wifi", "headset gamer", "notebook", "monitor",
+    "ssd externo", "memoria ram", "controle xbox", "controle playstation",
+    "caixa de som bluetooth", "webcam full hd", "microfone usb", "leitor de cartao"
 ]
 
 
@@ -113,40 +110,50 @@ def calcular_desconto(original, atual):
     return 0
 
 
+def buscar_amazon():
+    try:
+        produto = random.choice(PRODUTOS_AMAZON)
+        desconto = calcular_desconto(produto["preco_original"], produto["preco_atual"])
+        link = f"https://www.amazon.com.br/dp/{produto['asin']}?tag={AMAZON_PARTNER_TAG}"
+        return {
+            "titulo": produto["nome"],
+            "preco_atual": produto["preco_atual"],
+            "preco_original": produto["preco_original"],
+            "desconto": desconto,
+            "link": link,
+            "imagem": None,
+            "loja": "Amazon"
+        }
+    except Exception as e:
+        print(f"❌ Erro Amazon: {e}")
+    return None
+
+
 def gerar_link_afiliado_meli(permalink):
-    """Gera link de afiliado oficial do MELI"""
     try:
         if not meli_access_token:
             obter_token_meli()
-
         url = "https://api.mercadolibre.com/v1/affiliate/links"
         headers = {
             "Authorization": f"Bearer {meli_access_token}",
             "Content-Type": "application/json"
         }
-        payload = {
-            "url": permalink,
-            "publisher_id": MELI_AFFILIATE_ID
-        }
+        payload = {"url": permalink, "publisher_id": MELI_AFFILIATE_ID}
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
             return response.json().get("short_url") or permalink
     except Exception as e:
-        print(f"⚠️ Erro ao gerar link afiliado: {e}")
-
-    # Fallback: link direto com parâmetro de afiliado
+        print(f"⚠️ Erro link afiliado: {e}")
     return f"{permalink}?matt_tool=23829216&matt_word={MELI_AFFILIATE_ID}"
 
 
 def buscar_meli():
     global meli_access_token
-
     try:
         if not meli_access_token:
             obter_token_meli()
 
         categorias = random.sample(CATEGORIAS_TECH_MELI, 3)
-
         for keyword in categorias:
             headers = {"Authorization": f"Bearer {meli_access_token}"} if meli_access_token else {}
             url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=20"
@@ -170,13 +177,12 @@ def buscar_meli():
                 imagem = p.get("thumbnail", "").replace("I.jpg", "O.jpg")
 
                 if desconto >= DESCONTO_MINIMO and preco_atual > 50:
-                    permalink = p.get("permalink", "")
                     melhores.append({
                         "titulo": p.get("title", "Produto Tech"),
                         "preco_atual": preco_atual,
                         "preco_original": preco_original,
                         "desconto": desconto,
-                        "permalink": permalink,
+                        "permalink": p.get("permalink", ""),
                         "imagem": imagem,
                         "loja": "Mercado Livre"
                     })
@@ -186,7 +192,7 @@ def buscar_meli():
                 melhor["link"] = gerar_link_afiliado_meli(melhor["permalink"])
                 return melhor
 
-        # Fallback sem desconto
+        # Fallback
         keyword = random.choice(CATEGORIAS_TECH_MELI)
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={keyword}&category=MLB1648&sort=best_match&limit=5"
         response = requests.get(url, timeout=10)
@@ -206,33 +212,13 @@ def buscar_meli():
                     "imagem": p.get("thumbnail", "").replace("I.jpg", "O.jpg"),
                     "loja": "Mercado Livre"
                 }
-
     except Exception as e:
         print(f"❌ Erro MELI: {e}")
     return None
 
 
-def buscar_amazon():
-    try:
-        produto = random.choice(PRODUTOS_AMAZON)
-        desconto = calcular_desconto(produto["preco_original"], produto["preco_atual"])
-        link = f"https://www.amazon.com.br/dp/{produto['asin']}?tag={AMAZON_PARTNER_TAG}"
-        return {
-            "titulo": produto["nome"],
-            "preco_atual": produto["preco_atual"],
-            "preco_original": produto["preco_original"],
-            "desconto": desconto,
-            "link": link,
-            "imagem": None,
-            "loja": "Amazon"
-        }
-    except Exception as e:
-        print(f"❌ Erro Amazon: {e}")
-    return None
-
-
 def montar_mensagem(oferta):
-    emoji_loja = {"Amazon": "📦", "Shopee": "🛍️", "Mercado Livre": "🛒"}
+    emoji_loja = {"Amazon": "📦", "Mercado Livre": "🛒"}
     loja_emoji = emoji_loja.get(oferta["loja"], "🏪")
     titulo = oferta["titulo"][:80] + "..." if len(oferta["titulo"]) > 80 else oferta["titulo"]
 
@@ -257,7 +243,6 @@ def montar_mensagem(oferta):
 def postar_oferta():
     print(f"\n🔍 [{datetime.now().strftime('%H:%M:%S')}] Buscando ofertas...")
 
-    # MELI 70% de chance, Amazon 30%
     sorteio = random.randint(1, 10)
     if sorteio <= 7:
         oferta = buscar_meli()
@@ -282,10 +267,10 @@ def iniciar_agendamento():
 
     enviar_telegram(
         "🤖 <b>Bot Promos Tech BR atualizado!</b>\n\n"
-        "✅ Mercado Livre API oficial conectada\n"
-        "✅ Links de afiliado reais\n"
+        "✅ 18 produtos Amazon reais\n"
+        "✅ Mercado Livre em tempo real\n"
         "✅ 5 postagens por dia\n\n"
-        "⏰ Horários: 08h | 12h | 15h | 18h | 21h\n\n"
+        "⏰ 08h | 12h | 15h | 18h | 21h\n\n"
         "📢 @promostechbr01 | Promos Tech BR"
     )
 
@@ -295,7 +280,6 @@ def iniciar_agendamento():
         schedule.every().day.at(horario).do(postar_oferta)
         print(f"⏰ Agendado para {horario}")
 
-    # Renova token MELI a cada 5 horas
     schedule.every(5).hours.do(obter_token_meli)
 
     print(f"\n✅ Bot rodando! Postagens às: {', '.join(HORARIOS)}\n")
