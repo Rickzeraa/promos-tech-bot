@@ -16,13 +16,13 @@ AMAZON_PARTNER_TAG = "digitalvaiven-20"
 MELI_AFFILIATE_ID = "r20251127144407"
 
 DESCONTO_MINIMO_PERCENT = 15
-ECONOMIA_MINIMA_REAIS = 100
+ECONOMIA_MINIMA_REAIS = 30
 PRECO_MINIMO = 50
 
-RELAMPAGO_PERCENT = 50
-RELAMPAGO_REAIS = 500
-RELAMPAGO_TICKET_ALTO_PERCENT = 30
-RELAMPAGO_TICKET_ALTO_PRECO = 2000
+RELAMPAGO_PERCENT = 20
+RELAMPAGO_REAIS = 100
+RELAMPAGO_TICKET_ALTO_PRECO_MIN = 200
+RELAMPAGO_TICKET_ALTO_PERCENT = 20
 
 HORARIOS_BLOCOS = ["08:00", "12:00", "17:00", "21:00"]
 POSTS_POR_BLOCO = 6
@@ -161,6 +161,11 @@ def calcular_desconto(original, atual):
 
 
 def vale_postar(preco_original, preco_atual):
+    """
+    Post normal dispara se QUALQUER UMA:
+    - Desconto >= 15%
+    - OU economia >= R$30
+    """
     if preco_atual < PRECO_MINIMO:
         return False
     desconto = calcular_desconto(preco_original, preco_atual)
@@ -169,17 +174,21 @@ def vale_postar(preco_original, preco_atual):
 
 
 def eh_relampago(preco_original, preco_atual):
+    """
+    Relâmpago dispara se as TRÊS condições forem verdadeiras:
+    - Produto >= R$200
+    - Economia >= R$100
+    - Desconto >= 20%
+    """
     if not preco_original:
         return False
     desconto = calcular_desconto(preco_original, preco_atual)
     economia = preco_original - preco_atual
-    if desconto >= RELAMPAGO_PERCENT:
-        return True
-    if economia >= RELAMPAGO_REAIS:
-        return True
-    if preco_atual >= RELAMPAGO_TICKET_ALTO_PRECO and desconto >= RELAMPAGO_TICKET_ALTO_PERCENT:
-        return True
-    return False
+    return (
+        preco_atual >= 200 and
+        economia >= 100 and
+        desconto >= 20
+    )
 
 
 # ============================================================
