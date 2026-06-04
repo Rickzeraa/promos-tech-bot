@@ -231,15 +231,34 @@ def vale_postar_normal(preco_original, preco_atual):
 
 
 def eh_relampago(preco_original, preco_atual):
-    if not preco_original:
+    """
+    Regra por faixa de ticket:
+
+    Ticket baixo (R$50 a R$300):
+    → Desconto >= 30%
+
+    Ticket médio (R$300 a R$1.000):
+    → Desconto >= 20% OU economia >= R$100
+
+    Ticket alto (acima de R$1.000):
+    → Desconto >= 15% OU economia >= R$200
+    """
+    if not preco_original or preco_atual < PRECO_MINIMO:
         return False
+
     desconto = calcular_desconto(preco_original, preco_atual)
     economia = preco_original - preco_atual
-    return (
-        preco_atual >= RELAMPAGO_PRECO_MIN and
-        economia >= RELAMPAGO_ECONOMIA_MIN and
-        desconto >= RELAMPAGO_DESCONTO_MIN
-    )
+
+    # Ticket baixo: R$50 a R$300
+    if preco_atual < 300:
+        return desconto >= 30
+
+    # Ticket médio: R$300 a R$1.000
+    if preco_atual < 1000:
+        return desconto >= 20 or economia >= 100
+
+    # Ticket alto: acima de R$1.000
+    return desconto >= 15 or economia >= 200
 
 
 # ============================================================
@@ -432,6 +451,128 @@ def montar_mensagem(oferta):
     return msg
 
 
+
+# ============================================================
+# MELI — BUSCA ESPECÍFICA DE RELÂMPAGOS
+# ============================================================
+
+def buscar_relampagos_meli():
+    """
+    Busca EXCLUSIVAMENTE na aba de ofertas relâmpago do MELI.
+    Fonte separada do bloco normal — nunca se cruzam.
+    """
+    global meli_token
+
+    if not meli_token:
+        obter_token_meli()
+
+    headers = {"Authorization": f"Bearer {meli_token}"}
+    relampagos = []
+    ids_vistos = set()
+
+    # Categorias para buscar relâmpagos
+    categorias = [
+        "MLB1051",  # Celulares
+        "MLB1648",  # Computação
+        "MLB1000",  # Eletrônicos
+        "MLB1144",  # TVs
+        "MLB1714",  # Áudio
+        "MLB1039",  # Câmeras
+        "MLB1574",  # Eletrodomésticos
+        "MLB5726",  # Wearables
+        "MLB1743",  # Games
+    ]
+
+    for cat_id in categorias:
+        try:
+            # Endpoint específico de ofertas relâmpago por categoria
+            r = requests.get(
+                f"https://api.mercadolibre.com/highlights/MLB/category/{cat_id}?highlight_type=deal_of_the_day",
+                headers=headers, timeout=10
+            )
+
+            if r.status_code == 401:
+                obter_token_meli()
+                headers = {"Authorization": f"Bearer {meli_token}"}
+                r = requests.get(
+                    f"https://api.mercadolibre.com/highlights/MLB/category/{cat_id}?highlight_type=deal_of_the_day",
+                    headers=headers, timeout=10
+                )
+
+            if r.status_code != 200:
+                continue
+
+            catalog_ids = [
+                item.get("id") for item in r.json().get("content", [])
+                if item.get("id")
+            ]
+
+            for cat_produto_id in catalog_ids:
+                if cat_produto_id in ids_vistos:
+                    continue
+                ids_vistos.add(cat_produto_id)
+
+                try:
+                    # Detalhes do catálogo
+                    r_cat = requests.get(
+                        f"https://api.mercadolibre.com/products/{cat_produto_id}",
+                        headers=headers, timeout=10
+                    )
+                    nome = cat_produto_id
+                    imagem = ""
+                    if r_cat.status_code == 200:
+                        cat_data = r_cat.json()
+                        nome = cat_data.get("name", cat_produto_id)
+                        pics = cat_data.get("pictures", [])
+                        if pics:
+                            imagem = pics[0].get("url", "")
+
+                    # Itens com preço
+                    r2 = requests.get(
+                        f"https://api.mercadolibre.com/products/{cat_produto_id}/items",
+                        headers=headers, timeout=10
+                    )
+                    if r2.status_code != 200:
+                        continue
+
+                    items = [i for i in r2.json().get("results", []) if i.get("price", 0) > 0]
+                    if not items:
+                        continue
+
+                    item_mais_barato = min(items, key=lambda x: x["price"])
+                    preco_atual = item_mais_barato["price"]
+                    preco_original = item_mais_barato.get("original_price") or 0
+
+                    if not eh_relampago(preco_original, preco_atual):
+                        continue
+
+                    minimo = verificar_minimo_historico(cat_produto_id, nome, preco_atual)
+                    link = f"https://www.mercadolivre.com.br/p/{cat_produto_id}?matt_tool=23829216&matt_word={MELI_AFFILIATE_ID}"
+
+                    relampagos.append({
+                        "id": cat_produto_id,
+                        "titulo": nome,
+                        "preco_atual": preco_atual,
+                        "preco_original": preco_original,
+                        "desconto": calcular_desconto(preco_original, preco_atual),
+                        "economia": (preco_original - preco_atual) if preco_original else 0,
+                        "link": link,
+                        "imagem": imagem,
+                        "loja": "Mercado Livre",
+                        "relampago": True,
+                        "minimo_historico": minimo
+                    })
+
+                except Exception:
+                    continue
+
+        except Exception as e:
+            print(f"⚠️ Erro relâmpago {cat_id}: {e}")
+            continue
+
+    print(f"⚡ Relâmpagos encontrados: {len(relampagos)}")
+    return relampagos
+
 # ============================================================
 # MONITOR CONTÍNUO DE RELÂMPAGOS
 # ============================================================
@@ -439,15 +580,14 @@ def montar_mensagem(oferta):
 def monitorar_relampagos():
     print(f"\n⚡ [{datetime.now().strftime('%H:%M')}] Monitorando relâmpagos...")
 
-    todos = buscar_ofertas_meli()
+    # Usa fonte EXCLUSIVA de relâmpagos — separada do bloco normal
+    todos = buscar_relampagos_meli()
 
     relampagos = []
     ids_lista = set()
     for p in todos:
         pid = str(p["id"])
-        if (p["relampago"] or p["minimo_historico"]) \
-                and not ja_postado_recentemente(pid, p["preco_atual"], horas=6) \
-                and pid not in ids_lista:
+        if not ja_postado_recentemente(pid, p["preco_atual"], horas=6) and pid not in ids_lista:
             relampagos.append(p)
             ids_lista.add(pid)
 
@@ -455,8 +595,7 @@ def monitorar_relampagos():
         print("✅ Nenhum relâmpago no momento")
         return
 
-    relampagos.sort(key=lambda x: (x["minimo_historico"], x["relampago"], x["desconto"]), reverse=True)
-
+    relampagos.sort(key=lambda x: (x["minimo_historico"], x["desconto"]), reverse=True)
     print(f"🚨 {len(relampagos)} relâmpago(s) encontrado(s)!")
 
     for oferta in relampagos:
