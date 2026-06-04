@@ -618,67 +618,16 @@ def monitorar_relampagos():
 # BLOCOS AGENDADOS
 # ============================================================
 
-def postar_bloco():
-    print(f"\n🎯 [{datetime.now().strftime('%H:%M')}] Bloco de {POSTS_POR_BLOCO} posts!")
-
-    todos = buscar_ofertas_meli()
-    amazon_usados = []
-
-    # Filtra produtos válidos para post normal
-    meli_candidatos = [
-        p for p in todos
-        if vale_postar_normal(p["preco_original"], p["preco_atual"])
-        and not ja_postado_recentemente(str(p["id"]), p["preco_atual"], horas=6)
-    ]
-    meli_candidatos.sort(key=lambda x: x["desconto"], reverse=True)
-
-    print(f"📋 {len(meli_candidatos)} produtos MELI disponíveis para o bloco")
-
-    meli_index = 0
-
-    for i in range(POSTS_POR_BLOCO):
-        print(f"\n📨 Post {i+1}/{POSTS_POR_BLOCO}")
-        sorteio = random.randint(1, 10)
-
-        oferta = None
-
-        if sorteio <= 7:
-            # Busca próximo MELI que ainda não foi postado
-            while meli_index < len(meli_candidatos):
-                candidato = meli_candidatos[meli_index]
-                meli_index += 1
-                # Verifica NA HORA se ainda não foi postado
-                if not ja_postado_recentemente(str(candidato["id"]), candidato["preco_atual"], horas=6):
-                    oferta = candidato
-                    marcar_como_postado(str(oferta["id"]), oferta["preco_atual"])
-                    break
-                else:
-                    print(f"⏭️ Pulando {candidato['titulo'][:30]} — já postado")
-
-            if not oferta:
-                oferta = buscar_amazon(amazon_usados)
-        else:
-            oferta = buscar_amazon(amazon_usados)
-
-        if oferta:
-            if oferta.get("asin"):
-                amazon_usados.append(oferta["asin"])
-            mensagem = montar_mensagem(oferta)
-            enviar_telegram(mensagem, oferta.get("imagem"))
-            print(f"✅ [{oferta['loja']}]: {oferta['titulo'][:40]}")
-
-        if i < POSTS_POR_BLOCO - 1:
-            print(f"⏳ Aguardando {INTERVALO_POSTS_BLOCO} minutos...")
-            segundos_totais = INTERVALO_POSTS_BLOCO * 60
-            segundos_passados = 0
-            ultima_verificacao = 0
-            while segundos_passados < segundos_totais:
-                time.sleep(30)
-                segundos_passados += 30
-                ultima_verificacao += 30
-                if ultima_verificacao >= 300:
-                    monitorar_relampagos()
-                    ultima_verificacao = 0
+def postar_amazon():
+    """Posta 1 produto Amazon nos horários fixos"""
+    print(f"\n📦 [{datetime.now().strftime('%H:%M')}] Postando Amazon...")
+    amazon_usados = list(produtos_postados_sessao)
+    oferta = buscar_amazon(amazon_usados)
+    if oferta:
+        mensagem = montar_mensagem(oferta)
+        enviar_telegram(mensagem, oferta.get("imagem"))
+        marcar_como_postado(oferta["asin"], oferta["preco_atual"])
+        print(f"✅ Amazon: {oferta['titulo'][:40]}")
 
 
 # ============================================================
@@ -691,23 +640,21 @@ def iniciar_agendamento():
     obter_token_meli()
 
     enviar_telegram(
-        "🤖 <b>Bot Promos Tech BR — Busca Ampla Ativa!</b>\n\n"
-        "✅ Mercado Livre — busca ampla em 13 categorias\n"
-        "✅ Amazon com 18 produtos\n"
-        "✅ Blocos de 6 posts: 08h | 12h | 17h | 21h\n"
-        "⚡ Monitor relâmpago contínuo\n"
+        "🤖 <b>Bot Promos Tech BR — Atualizado!</b>\n\n"
+        "📦 Amazon: 08h | 12h | 17h | 21h\n"
+        "⚡ Relâmpago MELI: monitor contínuo\n"
         "🚨 Mínimo histórico ativo\n\n"
         "📢 @promostechbr01 | Promos Tech BR"
     )
 
     for horario in HORARIOS_BLOCOS:
-        schedule.every().day.at(horario).do(postar_bloco)
-        print(f"⏰ Bloco: {horario}")
+        schedule.every().day.at(horario).do(postar_amazon)
+        print(f"⏰ Amazon: {horario}")
 
     schedule.every(INTERVALO_MONITOR).minutes.do(monitorar_relampagos)
     schedule.every(5).hours.do(obter_token_meli)
 
-    postar_bloco()
+    postar_amazon()
 
     print(f"\n✅ Bot rodando!\n")
 
