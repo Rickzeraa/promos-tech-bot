@@ -474,8 +474,14 @@ def postar_bloco():
             enviar_telegram(mensagem, oferta.get("imagem"))
 
         if i < POSTS_POR_BLOCO - 1:
-            print(f"⏳ Aguardando {INTERVALO_POSTS_BLOCO} minutos...")
-            time.sleep(INTERVALO_POSTS_BLOCO * 60)
+            print(f"⏳ Aguardando {INTERVALO_POSTS_BLOCO} minutos (verificando relâmpagos)...")
+            segundos_totais = INTERVALO_POSTS_BLOCO * 60
+            segundos_passados = 0
+            while segundos_passados < segundos_totais:
+                time.sleep(30)
+                segundos_passados += 30
+                # Verifica relâmpago a cada 30 segundos durante a espera
+                monitorar_relampagos()
 
 
 # ============================================================
