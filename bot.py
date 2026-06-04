@@ -134,35 +134,38 @@ def salvar_relampagos():
 
 def ja_postado_recentemente(produto_id, preco_atual, horas=6):
     """
-    Não repete se:
-    - Foi postado nas últimas 6 horas E o preço não mudou
-    Se o preço caiu, posta novamente imediatamente!
+    Usa dicionário em memória para controle confiável.
+    Não repete se mesmo preço e menos de 6 horas.
+    Se preço caiu, posta imediatamente.
     """
     produto_id = str(produto_id)
+    
     if produto_id not in relampagos_postados:
         return False
 
     dados = relampagos_postados[produto_id]
-    ultima_vez = datetime.strptime(dados["timestamp"], "%Y-%m-%d %H:%M")
+    ultima_vez = dados["timestamp"]
     diferenca = (datetime.now() - ultima_vez).total_seconds() / 3600
 
     if diferenca >= horas:
-        return False  # Já passou 6 horas, pode postar
+        print(f"⏰ {produto_id} — passou {horas}h, pode postar novamente")
+        return False
 
     ultimo_preco = dados.get("preco", 0)
-    if preco_atual < ultimo_preco:
+    if preco_atual < ultimo_preco * 0.99:  # margem de 1% para variações mínimas
         print(f"💥 Preço caiu! Era R${ultimo_preco} agora R${preco_atual} — postando!")
-        return False  # Preço caiu, posta novamente!
+        return False
 
-    return True  # Mesmo preço e menos de 6 horas, não repete
+    print(f"⏭️ Ignorando {produto_id} — já postado há {diferenca:.1f}h com mesmo preço")
+    return True
 
 
 def marcar_como_postado(produto_id, preco):
     relampagos_postados[str(produto_id)] = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "timestamp": datetime.now(),  # datetime object para cálculo preciso
         "preco": preco
     }
-    salvar_relampagos()
+    print(f"📝 Marcado: {produto_id} | R${preco} | {datetime.now().strftime('%H:%M')}")
 
 
 def verificar_minimo_historico(produto_id, titulo, preco_atual):
