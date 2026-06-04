@@ -427,7 +427,7 @@ def monitorar_relampagos():
     relampagos = [
         p for p in todos
         if (p["relampago"] or p["minimo_historico"])
-        and not ja_postado_recentemente(p["id"], p["preco_atual"], horas=6)
+        and not ja_postado_recentemente(str(p["id"]), p["preco_atual"], horas=6)
     ]
 
     if not relampagos:
@@ -442,7 +442,7 @@ def monitorar_relampagos():
     for oferta in relampagos:
         mensagem = montar_mensagem(oferta)
         enviar_telegram(mensagem, oferta.get("imagem"))
-        marcar_como_postado(oferta["id"], oferta["preco_atual"])
+        marcar_como_postado(str(oferta["id"]), oferta["preco_atual"])
         print(f"⚡ Postado: {oferta['titulo'][:50]}")
         time.sleep(60)  # 1 minuto entre cada relâmpago
 
@@ -474,14 +474,19 @@ def postar_bloco():
             enviar_telegram(mensagem, oferta.get("imagem"))
 
         if i < POSTS_POR_BLOCO - 1:
-            print(f"⏳ Aguardando {INTERVALO_POSTS_BLOCO} minutos (verificando relâmpagos)...")
+            print(f"⏳ Aguardando {INTERVALO_POSTS_BLOCO} minutos (monitorando relâmpagos)...")
             segundos_totais = INTERVALO_POSTS_BLOCO * 60
             segundos_passados = 0
+            ultima_verificacao = 0
             while segundos_passados < segundos_totais:
                 time.sleep(30)
                 segundos_passados += 30
-                # Verifica relâmpago a cada 30 segundos durante a espera
-                monitorar_relampagos()
+                ultima_verificacao += 30
+                # Verifica relâmpago a cada 5 minutos
+                # A regra de 6 horas + mudança de preço já evita duplicatas
+                if ultima_verificacao >= 300:
+                    monitorar_relampagos()
+                    ultima_verificacao = 0
 
 
 # ============================================================
