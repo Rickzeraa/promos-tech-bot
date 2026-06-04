@@ -17,22 +17,32 @@ MELI_CLIENT_ID = "697990339549885"
 MELI_CLIENT_SECRET = "xzKEHd0bTveL6gNW636CSGt2JqjEJgdL"
 MELI_AFFILIATE_ID = "r20251127144407"
 
+# Regras post normal
 DESCONTO_MINIMO_PERCENT = 15
 ECONOMIA_MINIMA_REAIS = 30
 PRECO_MINIMO = 50
 
+# Regras relâmpago
+RELAMPAGO_PRECO_MIN = 200
+RELAMPAGO_ECONOMIA_MIN = 100
+RELAMPAGO_DESCONTO_MIN = 20
+
+# Blocos agendados
 HORARIOS_BLOCOS = ["08:00", "12:00", "17:00", "21:00"]
 POSTS_POR_BLOCO = 6
-INTERVALO_MINUTOS = 10
-INTERVALO_RELAMPAGO = 30
+INTERVALO_POSTS_BLOCO = 10  # minutos
+
+# Monitor contínuo de relâmpagos
+INTERVALO_MONITOR = 5  # minutos
 
 HISTORICO_FILE = "historico.json"
+RELAMPAGOS_POSTADOS_FILE = "relampagos_postados.json"
 # ============================================================
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 meli_token = None
 historico_precos = {}
-ultimo_relampago_id = None
+relampagos_postados = {}  # id -> timestamp
 
 CATEGORIAS_MELI = [
     "MLB1648", "MLB1051", "MLB1000", "MLB1144",
@@ -83,11 +93,11 @@ def obter_token_meli():
 
 
 # ============================================================
-# HISTÓRICO
+# HISTÓRICO E CONTROLE DE RELÂMPAGOS
 # ============================================================
 
 def carregar_historico():
-    global historico_precos
+    global historico_precos, relampagos_postados
     try:
         if os.path.exists(HISTORICO_FILE):
             with open(HISTORICO_FILE, "r") as f:
@@ -95,8 +105,15 @@ def carregar_historico():
             print(f"✅ Histórico: {len(historico_precos)} produtos")
         else:
             historico_precos = {}
+
+        if os.path.exists(RELAMPAGOS_POSTADOS_FILE):
+            with open(RELAMPAGOS_POSTADOS_FILE, "r") as f:
+                relampagos_postados = json.load(f)
+        else:
+            relampagos_postados = {}
     except:
         historico_precos = {}
+        relampagos_postados = {}
 
 
 def salvar_historico():
@@ -105,6 +122,47 @@ def salvar_historico():
             json.dump(historico_precos, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"⚠️ Erro histórico: {e}")
+
+
+def salvar_relampagos():
+    try:
+        with open(RELAMPAGOS_POSTADOS_FILE, "w") as f:
+            json.dump(relampagos_postados, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
+
+def ja_postado_recentemente(produto_id, preco_atual, horas=6):
+    """
+    Não repete se:
+    - Foi postado nas últimas 6 horas E o preço não mudou
+    Se o preço caiu, posta novamente imediatamente!
+    """
+    produto_id = str(produto_id)
+    if produto_id not in relampagos_postados:
+        return False
+
+    dados = relampagos_postados[produto_id]
+    ultima_vez = datetime.strptime(dados["timestamp"], "%Y-%m-%d %H:%M")
+    diferenca = (datetime.now() - ultima_vez).total_seconds() / 3600
+
+    if diferenca >= horas:
+        return False  # Já passou 6 horas, pode postar
+
+    ultimo_preco = dados.get("preco", 0)
+    if preco_atual < ultimo_preco:
+        print(f"💥 Preço caiu! Era R${ultimo_preco} agora R${preco_atual} — postando!")
+        return False  # Preço caiu, posta novamente!
+
+    return True  # Mesmo preço e menos de 6 horas, não repete
+
+
+def marcar_como_postado(produto_id, preco):
+    relampagos_postados[str(produto_id)] = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "preco": preco
+    }
+    salvar_relampagos()
 
 
 def verificar_minimo_historico(produto_id, titulo, preco_atual):
@@ -164,7 +222,7 @@ def calcular_desconto(original, atual):
     return 0
 
 
-def vale_postar(preco_original, preco_atual):
+def vale_postar_normal(preco_original, preco_atual):
     if preco_atual < PRECO_MINIMO:
         return False
     desconto = calcular_desconto(preco_original, preco_atual)
@@ -177,27 +235,31 @@ def eh_relampago(preco_original, preco_atual):
         return False
     desconto = calcular_desconto(preco_original, preco_atual)
     economia = preco_original - preco_atual
-    return preco_atual >= 200 and economia >= 100 and desconto >= 20
+    return (
+        preco_atual >= RELAMPAGO_PRECO_MIN and
+        economia >= RELAMPAGO_ECONOMIA_MIN and
+        desconto >= RELAMPAGO_DESCONTO_MIN
+    )
 
 
 # ============================================================
 # MELI
 # ============================================================
 
-def buscar_meli(apenas_relampago=False):
-    global meli_token, ultimo_relampago_id
+def buscar_todos_meli():
+    """Busca todos os produtos disponíveis no MELI e retorna lista completa"""
+    global meli_token
 
     if not meli_token:
         obter_token_meli()
 
     headers = {"Authorization": f"Bearer {meli_token}"}
-    candidatos = []
+    todos = []
 
     cats = random.sample(CATEGORIAS_MELI, min(4, len(CATEGORIAS_MELI)))
 
     for cat in cats:
         try:
-            # Pegar highlights da categoria
             r1 = requests.get(
                 f"https://api.mercadolibre.com/highlights/MLB/category/{cat}",
                 headers=headers, timeout=10
@@ -216,7 +278,6 @@ def buscar_meli(apenas_relampago=False):
 
             for cat_id in catalog_ids:
                 try:
-                    # Detalhes do catálogo (nome + imagem)
                     r_cat = requests.get(
                         f"https://api.mercadolibre.com/products/{cat_id}",
                         headers=headers, timeout=10
@@ -230,7 +291,6 @@ def buscar_meli(apenas_relampago=False):
                         if pics:
                             imagem = pics[0].get("url", "")
 
-                    # Itens com preço
                     r2 = requests.get(
                         f"https://api.mercadolibre.com/products/{cat_id}/items",
                         headers=headers, timeout=10
@@ -242,17 +302,15 @@ def buscar_meli(apenas_relampago=False):
                     if not items:
                         continue
 
-                    # Pega o item com menor preço e usa original_price real
                     item_mais_barato = min(items, key=lambda x: x["price"])
                     preco_atual = item_mais_barato["price"]
-                    # Usa APENAS o original_price real do item, nunca compara vendedores
                     preco_original = item_mais_barato.get("original_price") or 0
 
                     link = f"https://www.mercadolivre.com.br/p/{cat_id}?matt_tool=23829216&matt_word={MELI_AFFILIATE_ID}"
                     minimo = verificar_minimo_historico(cat_id, nome, preco_atual)
                     relampago = eh_relampago(preco_original, preco_atual)
 
-                    oferta = {
+                    todos.append({
                         "id": cat_id,
                         "titulo": nome,
                         "preco_atual": preco_atual,
@@ -264,31 +322,26 @@ def buscar_meli(apenas_relampago=False):
                         "loja": "Mercado Livre",
                         "relampago": relampago,
                         "minimo_historico": minimo
-                    }
-
-                    if apenas_relampago:
-                        if (relampago or minimo) and cat_id != ultimo_relampago_id:
-                            candidatos.append(oferta)
-                    else:
-                        if preco_atual >= PRECO_MINIMO:
-                            candidatos.append(oferta)
+                    })
 
                 except Exception as e:
-                    print(f"⚠️ Erro catálogo {cat_id}: {e}")
                     continue
 
         except Exception as e:
-            print(f"⚠️ Erro categoria {cat}: {e}")
             continue
 
-    if candidatos:
-        candidatos.sort(key=lambda x: (x["minimo_historico"], x["relampago"], x["desconto"]), reverse=True)
-        melhor = candidatos[0]
-        if apenas_relampago:
-            ultimo_relampago_id = melhor["id"]
-        print(f"✅ MELI: {melhor['titulo'][:50]} | R${melhor['preco_atual']}")
-        return melhor
+    return todos
 
+
+def buscar_meli_normal():
+    """Para blocos agendados — pega melhor oferta normal"""
+    todos = buscar_todos_meli()
+    candidatos = [p for p in todos if vale_postar_normal(p["preco_original"], p["preco_atual"])]
+    if candidatos:
+        candidatos.sort(key=lambda x: x["desconto"], reverse=True)
+        return candidatos[0]
+    if todos:
+        return todos[0]
     return None
 
 
@@ -315,9 +368,8 @@ def buscar_amazon(excluir_asins=[]):
             "minimo_historico": False,
             "asin": produto["asin"]
         }
-    except Exception as e:
-        print(f"❌ Erro Amazon: {e}")
-    return None
+    except:
+        return None
 
 
 # ============================================================
@@ -364,7 +416,39 @@ def montar_mensagem(oferta):
 
 
 # ============================================================
-# POSTAGEM
+# MONITOR CONTÍNUO DE RELÂMPAGOS
+# ============================================================
+
+def monitorar_relampagos():
+    """Roda a cada 5 minutos — posta TODOS os relâmpagos encontrados"""
+    print(f"\n⚡ [{datetime.now().strftime('%H:%M')}] Monitorando relâmpagos...")
+
+    todos = buscar_todos_meli()
+    relampagos = [
+        p for p in todos
+        if (p["relampago"] or p["minimo_historico"])
+        and not ja_postado_recentemente(p["id"], p["preco_atual"], horas=6)
+    ]
+
+    if not relampagos:
+        print("✅ Nenhum relâmpago no momento")
+        return
+
+    print(f"🚨 {len(relampagos)} relâmpago(s) encontrado(s)!")
+
+    # Ordena por prioridade: mínimo histórico > relâmpago > desconto
+    relampagos.sort(key=lambda x: (x["minimo_historico"], x["relampago"], x["desconto"]), reverse=True)
+
+    for oferta in relampagos:
+        mensagem = montar_mensagem(oferta)
+        enviar_telegram(mensagem, oferta.get("imagem"))
+        marcar_como_postado(oferta["id"], oferta["preco_atual"])
+        print(f"⚡ Postado: {oferta['titulo'][:50]}")
+        time.sleep(60)  # 1 minuto entre cada relâmpago
+
+
+# ============================================================
+# BLOCOS AGENDADOS
 # ============================================================
 
 def postar_bloco():
@@ -376,7 +460,7 @@ def postar_bloco():
         sorteio = random.randint(1, 10)
 
         if sorteio <= 7:
-            oferta = buscar_meli()
+            oferta = buscar_meli_normal()
             if not oferta:
                 print("⚠️ MELI falhou, usando Amazon")
                 oferta = buscar_amazon(amazon_usados)
@@ -390,18 +474,8 @@ def postar_bloco():
             enviar_telegram(mensagem, oferta.get("imagem"))
 
         if i < POSTS_POR_BLOCO - 1:
-            print(f"⏳ Aguardando {INTERVALO_MINUTOS} minutos...")
-            time.sleep(INTERVALO_MINUTOS * 60)
-
-
-def verificar_relampago():
-    print(f"\n⚡ [{datetime.now().strftime('%H:%M')}] Verificando relâmpagos...")
-    oferta = buscar_meli(apenas_relampago=True)
-    if oferta:
-        print(f"🚨 RELÂMPAGO: {oferta['titulo'][:40]}")
-        enviar_telegram(montar_mensagem(oferta), oferta.get("imagem"))
-    else:
-        print("✅ Nenhum relâmpago")
+            print(f"⏳ Aguardando {INTERVALO_POSTS_BLOCO} minutos...")
+            time.sleep(INTERVALO_POSTS_BLOCO * 60)
 
 
 # ============================================================
@@ -414,24 +488,29 @@ def iniciar_agendamento():
     obter_token_meli()
 
     enviar_telegram(
-        "🤖 <b>Bot Promos Tech BR — Mercado Livre Ativo!</b>\n\n"
+        "🤖 <b>Bot Promos Tech BR — Monitor Ativo!</b>\n\n"
         "✅ Mercado Livre funcionando\n"
         "✅ Amazon com 18 produtos\n"
-        "✅ Blocos de 6 posts\n"
-        "⚡ Alerta Relâmpago ativo\n"
-        "🚨 Mínimo Histórico ativo\n\n"
-        "⏰ 08h | 12h | 17h | 21h\n\n"
+        "✅ Blocos de 6 posts: 08h | 12h | 17h | 21h\n"
+        "⚡ Monitor relâmpago a cada 5 minutos\n"
+        "🚨 Mínimo histórico ativo\n\n"
         "📢 @promostechbr01 | Promos Tech BR"
     )
 
-    postar_bloco()
-
+    # Blocos agendados
     for horario in HORARIOS_BLOCOS:
         schedule.every().day.at(horario).do(postar_bloco)
-        print(f"⏰ Agendado: {horario}")
+        print(f"⏰ Bloco: {horario}")
 
-    schedule.every(INTERVALO_RELAMPAGO).minutes.do(verificar_relampago)
+    # Monitor contínuo de relâmpagos
+    schedule.every(INTERVALO_MONITOR).minutes.do(monitorar_relampagos)
+    print(f"⚡ Monitor relâmpago: a cada {INTERVALO_MONITOR} minutos")
+
+    # Renova token
     schedule.every(5).hours.do(obter_token_meli)
+
+    # Posta um bloco inicial para testar
+    postar_bloco()
 
     print(f"\n✅ Bot rodando!\n")
 
