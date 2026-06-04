@@ -640,10 +640,23 @@ def postar_bloco():
         print(f"\n📨 Post {i+1}/{POSTS_POR_BLOCO}")
         sorteio = random.randint(1, 10)
 
-        if sorteio <= 7 and meli_index < len(meli_candidatos):
-            oferta = meli_candidatos[meli_index]
-            meli_index += 1
-            marcar_como_postado(str(oferta["id"]), oferta["preco_atual"])
+        oferta = None
+
+        if sorteio <= 7:
+            # Busca próximo MELI que ainda não foi postado
+            while meli_index < len(meli_candidatos):
+                candidato = meli_candidatos[meli_index]
+                meli_index += 1
+                # Verifica NA HORA se ainda não foi postado
+                if not ja_postado_recentemente(str(candidato["id"]), candidato["preco_atual"], horas=6):
+                    oferta = candidato
+                    marcar_como_postado(str(oferta["id"]), oferta["preco_atual"])
+                    break
+                else:
+                    print(f"⏭️ Pulando {candidato['titulo'][:30]} — já postado")
+
+            if not oferta:
+                oferta = buscar_amazon(amazon_usados)
         else:
             oferta = buscar_amazon(amazon_usados)
 
