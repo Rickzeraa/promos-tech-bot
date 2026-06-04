@@ -109,7 +109,7 @@ def obter_token_meli():
 # ============================================================
 
 def carregar_historico():
-    global historico_precos
+    global historico_precos, relampagos_postados
     try:
         if os.path.exists(HISTORICO_FILE):
             with open(HISTORICO_FILE, "r") as f:
@@ -119,6 +119,17 @@ def carregar_historico():
             historico_precos = {}
     except:
         historico_precos = {}
+
+    # Carrega postados do arquivo para persistir entre reinicializações
+    try:
+        if os.path.exists("relampagos_postados.json"):
+            with open("relampagos_postados.json", "r") as f:
+                relampagos_postados = json.load(f)
+            print(f"✅ Postados carregados: {len(relampagos_postados)} produtos")
+        else:
+            relampagos_postados = {}
+    except:
+        relampagos_postados = {}
 
 
 def salvar_historico():
@@ -158,7 +169,7 @@ def verificar_minimo_historico(produto_id, titulo, preco_atual):
 def ja_postado_recentemente(produto_id, preco_atual, horas=6):
     """
     Lista ÚNICA compartilhada entre bloco normal e relâmpago.
-    Qualquer produto postado por qualquer fonte fica bloqueado.
+    Persiste em arquivo — funciona mesmo após reinicialização.
     """
     produto_id = str(produto_id)
 
@@ -166,11 +177,16 @@ def ja_postado_recentemente(produto_id, preco_atual, horas=6):
         return False
 
     dados = relampagos_postados[produto_id]
+
+    # Suporta tanto datetime object quanto string
     ultima_vez = dados["timestamp"]
+    if isinstance(ultima_vez, str):
+        ultima_vez = datetime.strptime(ultima_vez, "%Y-%m-%d %H:%M:%S")
+
     diferenca = (datetime.now() - ultima_vez).total_seconds() / 3600
 
     if diferenca >= horas:
-        del relampagos_postados[produto_id]  # limpa registro expirado
+        del relampagos_postados[produto_id]
         return False
 
     ultimo_preco = dados.get("preco", 0)
@@ -185,13 +201,20 @@ def ja_postado_recentemente(produto_id, preco_atual, horas=6):
 def marcar_como_postado(produto_id, preco):
     """
     Marca em lista ÚNICA — vale para bloco normal E relâmpago.
+    Salva em arquivo para persistir entre reinicializações.
     """
     produto_id = str(produto_id)
     relampagos_postados[produto_id] = {
-        "timestamp": datetime.now(),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "preco": preco
     }
     produtos_postados_sessao.add(produto_id)
+    # Salva em arquivo
+    try:
+        with open("relampagos_postados.json", "w") as f:
+            json.dump(relampagos_postados, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ Erro ao salvar postados: {e}")
     print(f"📝 Marcado: {produto_id[:20]} | R${preco:.2f}")
 
 
