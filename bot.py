@@ -242,10 +242,11 @@ def buscar_meli(apenas_relampago=False):
                     if not items:
                         continue
 
-                    # Pega preço mínimo e máximo para calcular desconto
-                    preco_atual = min(items, key=lambda x: x["price"])["price"]
-                    preco_max = max(items, key=lambda x: x["price"])["price"]
-                    preco_original = preco_max if preco_max > preco_atual else 0
+                    # Pega o item com menor preço e usa original_price real
+                    item_mais_barato = min(items, key=lambda x: x["price"])
+                    preco_atual = item_mais_barato["price"]
+                    # Usa APENAS o original_price real do item, nunca compara vendedores
+                    preco_original = item_mais_barato.get("original_price") or 0
 
                     link = f"https://www.mercadolivre.com.br/p/{cat_id}?matt_tool=23829216&matt_word={MELI_AFFILIATE_ID}"
                     minimo = verificar_minimo_historico(cat_id, nome, preco_atual)
