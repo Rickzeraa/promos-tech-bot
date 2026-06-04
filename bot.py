@@ -156,6 +156,10 @@ def verificar_minimo_historico(produto_id, titulo, preco_atual):
 # ============================================================
 
 def ja_postado_recentemente(produto_id, preco_atual, horas=6):
+    """
+    Lista ÚNICA compartilhada entre bloco normal e relâmpago.
+    Qualquer produto postado por qualquer fonte fica bloqueado.
+    """
     produto_id = str(produto_id)
 
     if produto_id not in relampagos_postados:
@@ -166,6 +170,7 @@ def ja_postado_recentemente(produto_id, preco_atual, horas=6):
     diferenca = (datetime.now() - ultima_vez).total_seconds() / 3600
 
     if diferenca >= horas:
+        del relampagos_postados[produto_id]  # limpa registro expirado
         return False
 
     ultimo_preco = dados.get("preco", 0)
@@ -178,6 +183,9 @@ def ja_postado_recentemente(produto_id, preco_atual, horas=6):
 
 
 def marcar_como_postado(produto_id, preco):
+    """
+    Marca em lista ÚNICA — vale para bloco normal E relâmpago.
+    """
     produto_id = str(produto_id)
     relampagos_postados[produto_id] = {
         "timestamp": datetime.now(),
@@ -620,7 +628,7 @@ def postar_bloco():
     meli_candidatos = [
         p for p in todos
         if vale_postar_normal(p["preco_original"], p["preco_atual"])
-        and not ja_postado_recentemente(str(p["id"]), p["preco_atual"], horas=2)
+        and not ja_postado_recentemente(str(p["id"]), p["preco_atual"], horas=6)
     ]
     meli_candidatos.sort(key=lambda x: x["desconto"], reverse=True)
 
