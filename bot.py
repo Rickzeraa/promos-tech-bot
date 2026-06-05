@@ -33,7 +33,7 @@ POSTS_POR_BLOCO = 6
 INTERVALO_POSTS_BLOCO = 10  # minutos
 
 # Monitor relâmpago
-INTERVALO_MONITOR = 5  # minutos
+INTERVALO_MONITOR = 10  # minutos
 
 HISTORICO_FILE = "historico.json"
 # ============================================================
@@ -173,12 +173,21 @@ def ja_postado_recentemente(produto_id, preco_atual, horas=6):
     """
     produto_id = str(produto_id)
 
+    # Recarrega arquivo a cada verificação para garantir dados frescos
+    try:
+        if os.path.exists("relampagos_postados.json"):
+            with open("relampagos_postados.json", "r") as f:
+                dados_arquivo = json.load(f)
+            relampagos_postados.update(dados_arquivo)
+    except:
+        pass
+
     if produto_id not in relampagos_postados:
+        print(f"🆕 Novo produto: {produto_id[:20]}")
         return False
 
     dados = relampagos_postados[produto_id]
 
-    # Suporta tanto datetime object quanto string
     ultima_vez = dados["timestamp"]
     if isinstance(ultima_vez, str):
         ultima_vez = datetime.strptime(ultima_vez, "%Y-%m-%d %H:%M:%S")
@@ -186,6 +195,7 @@ def ja_postado_recentemente(produto_id, preco_atual, horas=6):
     diferenca = (datetime.now() - ultima_vez).total_seconds() / 3600
 
     if diferenca >= horas:
+        print(f"⏰ Expirado: {produto_id[:20]} — {diferenca:.1f}h atrás")
         del relampagos_postados[produto_id]
         return False
 
@@ -194,7 +204,7 @@ def ja_postado_recentemente(produto_id, preco_atual, horas=6):
         print(f"💥 Preço caiu! Era R${ultimo_preco:.2f} agora R${preco_atual:.2f}")
         return False
 
-    print(f"⏭️ Bloqueado: {produto_id[:20]} — {diferenca:.1f}h atrás")
+    print(f"⏭️ BLOQUEADO: {produto_id[:20]} — {diferenca:.1f}h atrás | preço R${preco_atual:.2f}")
     return True
 
 
