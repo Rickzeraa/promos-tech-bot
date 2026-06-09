@@ -315,6 +315,11 @@ def buscar_meli():
                     desconto = calcular_desconto(preco_original, preco_atual)
                     link = f"https://www.mercadolivre.com.br/p/{cat_produto_id}?matt_tool=23829216&matt_word={MELI_AFFILIATE_ID}"
 
+                    # Verifica se é loja oficial e se tem relâmpago
+                    loja_oficial = bool(item.get("official_store_id"))
+                    deal_ids = item.get("deal_ids", [])
+                    relampago = any("flash" in str(d).lower() or "relampago" in str(d).lower() for d in deal_ids)
+
                     ofertas.append({
                         "id": cat_produto_id,
                         "titulo": nome,
@@ -326,7 +331,9 @@ def buscar_meli():
                         "imagem": imagem,
                         "loja": "Mercado Livre",
                         "categoria": cat_nome,
-                        "minimo_historico": minimo
+                        "minimo_historico": minimo,
+                        "loja_oficial": loja_oficial,
+                        "relampago": relampago
                     })
 
                 except:
@@ -346,10 +353,15 @@ def buscar_meli():
 def montar_mensagem(oferta):
     titulo = oferta["titulo"][:80] + "..." if len(oferta["titulo"]) > 80 else oferta["titulo"]
     categoria = oferta.get("categoria", "")
+    oficial = oferta.get("loja_oficial", False)
+    relampago = oferta.get("relampago", False)
 
     if oferta.get("minimo_historico"):
         msg = "🚨 <b>MÍNIMO HISTÓRICO!</b> 🚨\n\n⚠️ <b>MENOR PREÇO JÁ REGISTRADO!</b>\n\n"
         rodape = "⏰ <b>Menor preço já visto! Pode acabar a qualquer momento!</b>"
+    elif relampago:
+        msg = "⚡⚡ <b>OFERTA RELÂMPAGO!</b> ⚡⚡\n\n🔥 <b>POR TEMPO LIMITADÍSSIMO!</b>\n\n"
+        rodape = "⏰ <b>Essa oferta pode acabar a qualquer momento!</b>"
     else:
         msg = f"🔥 <b>OFERTA DO DIA!</b>\n\n"
         rodape = "⚡ <b>Por tempo limitado!</b>"
@@ -358,7 +370,14 @@ def montar_mensagem(oferta):
     if categoria:
         msg += f" — {categoria}"
     msg += f"</b>\n\n"
-    msg += f"📱 <b>{titulo}</b>\n\n"
+
+    # Indicador de loja oficial
+    if oficial:
+        msg += f"✅ <b>Loja Oficial</b>\n"
+    else:
+        msg += f"⚠️ <i>Vendedor terceiro — verifique avaliações</i>\n"
+
+    msg += f"\n📱 <b>{titulo}</b>\n\n"
 
     if oferta.get("preco_original") and oferta["preco_original"] > oferta["preco_atual"]:
         msg += f"<s>{formatar_preco(oferta['preco_original'])}</s>\n"
@@ -400,7 +419,7 @@ def monitorar_meli():
         print("✅ Nenhuma oferta nova")
         return
 
-    novas.sort(key=lambda x: (x["minimo_historico"], x["desconto"]), reverse=True)
+    novas.sort(key=lambda x: (x.get("relampago", False), x["minimo_historico"], x["desconto"]), reverse=True)
     print(f"🚨 {len(novas)} oferta(s) nova(s)!")
 
     for oferta in novas:
