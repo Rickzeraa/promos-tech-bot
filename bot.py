@@ -49,6 +49,37 @@ CATEGORIAS_MELI = [
     ("MLB1700", "Acessórios Celular"),
 ]
 
+# Marcas para buscar automaticamente via domain_discovery
+MARCAS_MELI = [
+    "Apple", "Samsung", "Motorola", "Xiaomi", "Sony",
+    "JBL", "LG", "Philips", "Multilaser", "Positivo",
+    "Dell", "Lenovo", "Asus", "Acer", "HP",
+    "PlayStation", "Xbox", "Nintendo",
+    "NVIDIA", "Corsair", "Logitech", "Razer", "HyperX",
+    "Canon", "Nikon", "GoPro", "DJI",
+    "Intelbras", "TP-Link", "D-Link",
+]
+
+# Produtos importantes para monitorar diretamente por catálogo
+# Esses produtos raramente aparecem nos highlights mas têm grande procura
+PRODUTOS_ALVO_MELI = [
+    # Celulares top
+    "MLB1791724",   # Samsung Galaxy S24 Ultra
+    "MLB1791725",   # Samsung Galaxy S25 Ultra
+    "MLB2000551",   # iPhone 16 Pro
+    "MLB2000552",   # iPhone 16 Pro Max
+    "MLB1900000",   # iPhone 15 Pro
+    # Games
+    "MLB1615760",   # PS5
+    "MLB1615761",   # Xbox Series X
+    "MLB2100000",   # Nintendo Switch
+    # Informática
+    "MLB2200000",   # RTX 4070
+    "MLB2200001",   # RTX 4080
+    "MLB1900001",   # SSD Samsung 1TB
+    "MLB1900002",   # SSD Kingston 1TB
+]
+
 PRODUTOS_AMAZON = [
     {"asin": "B0DYVPCX34", "nome": "Smartphone Samsung Galaxy", "preco_original": 3499.00, "preco_atual": 2199.99},
     {"asin": "B098YHFT9S", "nome": "Multifuncional Epson EcoTank L3250", "preco_original": 1379.00, "preco_atual": 1011.08},
@@ -115,34 +146,78 @@ def salvar_postados():
         print(f"⚠️ Erro ao salvar: {e}")
 
 
-def foi_postado(produto_id, preco_atual):
+def normalizar_nome(titulo):
+    """Normaliza o nome do produto para comparação — remove variações de cor/tamanho"""
+    import re
+    titulo = titulo.lower().strip()
+    # Remove tamanhos e capacidades comuns
+    titulo = re.sub(r'\b(\d+\s*gb|\d+\s*tb|\d+\s*mb)\b', '', titulo)
+    # Remove cores comuns
+    cores = ['preto', 'branco', 'azul', 'verde', 'vermelho', 'roxo', 'rosa',
+             'cinza', 'prata', 'dourado', 'amarelo', 'laranja', 'black',
+             'white', 'blue', 'green', 'red', 'purple', 'pink', 'gray',
+             'silver', 'gold', 'titanio', 'graphite']
+    for cor in cores:
+        titulo = re.sub(rf'\b{cor}\b', '', titulo)
+    # Remove espaços extras
+    titulo = re.sub(r'\s+', ' ', titulo).strip()
+    return titulo
+
+
+def foi_postado(produto_id, titulo, preco_atual, horas=4):
+    """
+    Verifica por ID E por nome normalizado.
+    Mesmo produto com cor diferente passa — nomes diferentes passam.
+    Mesmo produto com preço 2% menor passa.
+    """
     pid = str(produto_id)
-    if pid not in postados:
-        return False
-    try:
-        ts = datetime.strptime(postados[pid]["timestamp"], "%Y-%m-%d %H:%M:%S")
-        horas_passadas = (datetime.now() - ts).total_seconds() / 3600
-        if horas_passadas >= HORAS_BLOQUEIO:
+    nome_norm = normalizar_nome(titulo)
+    agora = datetime.now()
+
+    # Verifica por ID do catálogo
+    if pid in postados:
+        try:
+            ts = datetime.strptime(postados[pid]["timestamp"], "%Y-%m-%d %H:%M:%S")
+            horas_passadas = (agora - ts).total_seconds() / 3600
+            if horas_passadas < horas:
+                preco_anterior = postados[pid].get("preco", 0)
+                if preco_anterior > 0 and preco_atual < preco_anterior * 0.98:
+                    print(f"💥 Preço caiu! R${preco_anterior:.2f} → R${preco_atual:.2f}")
+                    return False
+                print(f"⏭️ Bloqueado por ID: {pid[:15]} ({horas_passadas:.1f}h)")
+                return True
+            else:
+                del postados[pid]
+                salvar_postados()
+        except:
             del postados[pid]
-            salvar_postados()
-            return False
-        preco_anterior = postados[pid].get("preco", 0)
-        if preco_anterior > 0 and preco_atual < preco_anterior * 0.98:
-            print(f"💥 Preço caiu! R${preco_anterior:.2f} → R${preco_atual:.2f}")
-            return False
-        print(f"⏭️ Bloqueado {pid[:15]} ({horas_passadas:.1f}h atrás)")
-        return True
-    except Exception as e:
-        print(f"⚠️ Erro verificação: {e}")
-        del postados[pid]
-        return False
+
+    # Verifica por nome normalizado
+    for key, dados in postados.items():
+        nome_postado = normalizar_nome(dados.get("titulo", ""))
+        if nome_postado and nome_norm and nome_postado == nome_norm:
+            try:
+                ts = datetime.strptime(dados["timestamp"], "%Y-%m-%d %H:%M:%S")
+                horas_passadas = (agora - ts).total_seconds() / 3600
+                if horas_passadas < horas:
+                    preco_anterior = dados.get("preco", 0)
+                    if preco_anterior > 0 and preco_atual < preco_anterior * 0.98:
+                        print(f"💥 Preço caiu! R${preco_anterior:.2f} → R${preco_atual:.2f}")
+                        return False
+                    print(f"⏭️ Bloqueado por nome: {nome_norm[:30]} ({horas_passadas:.1f}h)")
+                    return True
+            except:
+                pass
+
+    return False
 
 
-def marcar_postado(produto_id, preco):
+def marcar_postado(produto_id, titulo, preco):
     pid = str(produto_id)
     postados[pid] = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "preco": preco
+        "preco": preco,
+        "titulo": titulo
     }
     salvar_postados()
 
@@ -243,6 +318,109 @@ def eh_boa_oferta(preco_original, preco_atual):
 # MELI — highlights de TODAS as categorias
 # ============================================================
 
+def buscar_por_marcas(headers, ids_vistos):
+    """Busca highlights de cada marca via domain_discovery"""
+    ofertas = []
+
+    marcas = MARCAS_MELI.copy()
+    random.shuffle(marcas)
+
+    for marca in marcas:
+        try:
+            # Descobre categoria e brand_id da marca
+            r1 = requests.get(
+                f"https://api.mercadolibre.com/sites/MLB/domain_discovery/search?q={marca}&limit=1",
+                headers=headers, timeout=10
+            )
+            if r1.status_code != 200 or not r1.json():
+                continue
+
+            dominio = r1.json()[0]
+            cat_id = dominio.get("category_id")
+            if not cat_id:
+                continue
+
+            # Busca highlights da categoria da marca
+            r2 = requests.get(
+                f"https://api.mercadolibre.com/highlights/MLB/category/{cat_id}",
+                headers=headers, timeout=10
+            )
+            if r2.status_code != 200:
+                continue
+
+            catalog_ids = [i.get("id") for i in r2.json().get("content", []) if i.get("id")]
+
+            for cat_produto_id in catalog_ids:
+                if cat_produto_id in ids_vistos:
+                    continue
+                ids_vistos.add(cat_produto_id)
+
+                try:
+                    r_cat = requests.get(
+                        f"https://api.mercadolibre.com/products/{cat_produto_id}",
+                        headers=headers, timeout=10
+                    )
+                    nome = cat_produto_id
+                    imagem = ""
+                    if r_cat.status_code == 200:
+                        d = r_cat.json()
+                        nome = d.get("name", cat_produto_id)
+                        pics = d.get("pictures", [])
+                        if pics:
+                            imagem = pics[0].get("url", "")
+
+                    r3 = requests.get(
+                        f"https://api.mercadolibre.com/products/{cat_produto_id}/items",
+                        headers=headers, timeout=10
+                    )
+                    if r3.status_code != 200:
+                        continue
+
+                    items = [i for i in r3.json().get("results", []) if i.get("price", 0) > 0]
+                    if not items:
+                        continue
+
+                    item = min(items, key=lambda x: x["price"])
+                    preco_atual = item["price"]
+                    preco_original = item.get("original_price") or 0
+
+                    if not eh_boa_oferta(preco_original, preco_atual):
+                        continue
+
+                    minimo = eh_minimo_historico(cat_produto_id, nome, preco_atual)
+                    desconto = calcular_desconto(preco_original, preco_atual)
+                    loja_oficial = bool(item.get("official_store_id"))
+                    deal_ids = item.get("deal_ids", [])
+                    relampago = any("flash" in str(d).lower() for d in deal_ids)
+                    link = f"https://www.mercadolivre.com.br/p/{cat_produto_id}?matt_tool=23829216&matt_word={MELI_AFFILIATE_ID}"
+
+                    ofertas.append({
+                        "id": cat_produto_id,
+                        "titulo": nome,
+                        "preco_atual": preco_atual,
+                        "preco_original": preco_original,
+                        "desconto": desconto,
+                        "economia": (preco_original - preco_atual) if preco_original else 0,
+                        "link": link,
+                        "imagem": imagem,
+                        "loja": "Mercado Livre",
+                        "categoria": marca,
+                        "minimo_historico": minimo,
+                        "loja_oficial": loja_oficial,
+                        "relampago": relampago
+                    })
+
+                except:
+                    continue
+
+        except Exception as e:
+            print(f"⚠️ Erro marca {marca}: {e}")
+            continue
+
+    print(f"🏷️ Marcas: {len(ofertas)} produtos encontrados")
+    return ofertas
+
+
 def buscar_meli():
     global meli_token
     if not meli_token:
@@ -342,7 +520,72 @@ def buscar_meli():
             print(f"⚠️ Erro {cat_nome}: {e}")
             continue
 
-    print(f"📦 MELI: {len(ofertas)} ofertas em {len(cats)} categorias")
+    # Busca produtos-alvo importantes diretamente
+    print(f"🎯 Buscando {len(PRODUTOS_ALVO_MELI)} produtos-alvo...")
+    for cat_produto_id in PRODUTOS_ALVO_MELI:
+        if cat_produto_id in ids_vistos:
+            continue
+        ids_vistos.add(cat_produto_id)
+        try:
+            r_cat = requests.get(
+                f"https://api.mercadolibre.com/products/{cat_produto_id}",
+                headers=headers, timeout=10
+            )
+            if r_cat.status_code != 200:
+                continue
+            d = r_cat.json()
+            nome = d.get("name", cat_produto_id)
+            pics = d.get("pictures", [])
+            imagem = pics[0].get("url", "") if pics else ""
+
+            r2 = requests.get(
+                f"https://api.mercadolibre.com/products/{cat_produto_id}/items",
+                headers=headers, timeout=10
+            )
+            if r2.status_code != 200:
+                continue
+
+            items = [i for i in r2.json().get("results", []) if i.get("price", 0) > 0]
+            if not items:
+                continue
+
+            item = min(items, key=lambda x: x["price"])
+            preco_atual = item["price"]
+            preco_original = item.get("original_price") or 0
+
+            if not eh_boa_oferta(preco_original, preco_atual):
+                continue
+
+            minimo = eh_minimo_historico(cat_produto_id, nome, preco_atual)
+            desconto = calcular_desconto(preco_original, preco_atual)
+            loja_oficial = bool(item.get("official_store_id"))
+            deal_ids = item.get("deal_ids", [])
+            relampago = any("flash" in str(d).lower() for d in deal_ids)
+            link = f"https://www.mercadolivre.com.br/p/{cat_produto_id}?matt_tool=23829216&matt_word={MELI_AFFILIATE_ID}"
+
+            ofertas.append({
+                "id": cat_produto_id,
+                "titulo": nome,
+                "preco_atual": preco_atual,
+                "preco_original": preco_original,
+                "desconto": desconto,
+                "economia": (preco_original - preco_atual) if preco_original else 0,
+                "link": link,
+                "imagem": imagem,
+                "loja": "Mercado Livre",
+                "categoria": "Destaque",
+                "minimo_historico": minimo,
+                "loja_oficial": loja_oficial,
+                "relampago": relampago
+            })
+        except:
+            continue
+
+    # Busca por marcas famosas
+    ofertas_marcas = buscar_por_marcas(headers, ids_vistos)
+    ofertas.extend(ofertas_marcas)
+
+    print(f"📦 MELI: {len(ofertas)} ofertas totais ({len(cats)} categorias + marcas + produtos-alvo)")
     return ofertas
 
 
@@ -366,10 +609,7 @@ def montar_mensagem(oferta):
         msg = f"🔥 <b>OFERTA DO DIA!</b>\n\n"
         rodape = "⚡ <b>Por tempo limitado!</b>"
 
-    msg += f"🛒 <b>Mercado Livre"
-    if categoria:
-        msg += f" — {categoria}"
-    msg += f"</b>\n\n"
+    msg += f"🛒 <b>Mercado Livre</b>\n\n"
 
     # Indicador de loja oficial
     if oficial:
@@ -411,7 +651,7 @@ def monitorar_meli():
         pid = str(o["id"])
         if pid in ids_nesta_rodada:
             continue
-        if not foi_postado(pid, o["preco_atual"]):
+        if not foi_postado(pid, o["titulo"], o["preco_atual"]):
             novas.append(o)
             ids_nesta_rodada.add(pid)
 
@@ -424,11 +664,11 @@ def monitorar_meli():
 
     for oferta in novas:
         pid = str(oferta["id"])
-        if foi_postado(pid, oferta["preco_atual"]):
+        if foi_postado(pid, oferta["titulo"], oferta["preco_atual"]):
             continue
         mensagem = montar_mensagem(oferta)
         enviar_telegram(mensagem, oferta.get("imagem"))
-        marcar_postado(pid, oferta["preco_atual"])
+        marcar_postado(pid, oferta["titulo"], oferta["preco_atual"])
         print(f"✅ [{oferta['categoria']}]: {oferta['titulo'][:40]}")
         time.sleep(60)
 
@@ -461,7 +701,7 @@ def postar_amazon():
     msg += "📢 @promostechbr01 | Promos Tech BR"
 
     enviar_telegram(msg)
-    marcar_postado(produto["asin"], produto["preco_atual"])
+    marcar_postado(produto["asin"], produto["nome"], produto["preco_atual"])
     print(f"✅ Amazon: {produto['nome'][:40]}")
 
 
