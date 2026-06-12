@@ -4,6 +4,7 @@ import time
 import random
 import json
 import os
+import redis
 from datetime import datetime
 
 # ============================================================
@@ -31,6 +32,23 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 meli_token = None
 historico_precos = {}
 postados = {}
+
+# Conexão Redis — usa variável de ambiente do Railway
+REDIS_URL = os.environ.get("REDIS_URL", None)
+redis_client = None
+
+def conectar_redis():
+    global redis_client
+    if REDIS_URL:
+        try:
+            redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+            redis_client.ping()
+            print("✅ Redis conectado!")
+            return True
+        except Exception as e:
+            print(f"⚠️ Redis erro: {e} — usando arquivo local")
+            redis_client = None
+    return False
 
 # APENAS ISSO MUDOU — mais categorias para buscar highlights
 CATEGORIAS_MELI = [
@@ -117,31 +135,42 @@ def carregar_dados():
         historico_precos = {}
 
     try:
-        if os.path.exists(POSTADOS_FILE):
+        dados_raw = None
+        if redis_client:
+            dados_raw = redis_client.get("postados")
+        elif os.path.exists(POSTADOS_FILE):
             with open(POSTADOS_FILE, "r") as f:
-                postados = json.load(f)
-            agora = datetime.now()
-            expirados = []
-            for pid, dados in postados.items():
-                try:
-                    ts = datetime.strptime(dados["timestamp"], "%Y-%m-%d %H:%M:%S")
-                    if (agora - ts).total_seconds() / 3600 >= HORAS_BLOQUEIO:
-                        expirados.append(pid)
-                except:
-                    expirados.append(pid)
-            for pid in expirados:
-                del postados[pid]
-            print(f"✅ Postados: {len(postados)} ativos ({len(expirados)} expirados removidos)")
+                dados_raw = f.read()
+
+        if dados_raw:
+            postados = json.loads(dados_raw)
         else:
             postados = {}
+
+        # Limpa expirados
+        agora = datetime.now()
+        expirados = []
+        for pid, dados in postados.items():
+            try:
+                ts = datetime.strptime(dados["timestamp"], "%Y-%m-%d %H:%M:%S")
+                if (agora - ts).total_seconds() / 3600 >= HORAS_BLOQUEIO:
+                    expirados.append(pid)
+            except:
+                expirados.append(pid)
+        for pid in expirados:
+            del postados[pid]
+        print(f"✅ Postados: {len(postados)} ativos ({len(expirados)} expirados removidos)")
     except:
         postados = {}
 
 
 def salvar_postados():
     try:
-        with open(POSTADOS_FILE, "w") as f:
-            json.dump(postados, f, ensure_ascii=False, indent=2)
+        if redis_client:
+            redis_client.set("postados", json.dumps(postados, ensure_ascii=False))
+        else:
+            with open(POSTADOS_FILE, "w") as f:
+                json.dump(postados, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"⚠️ Erro ao salvar: {e}")
 
@@ -711,6 +740,7 @@ def postar_amazon():
 
 def iniciar():
     print("🚀 Iniciando bot...")
+    conectar_redis()
     carregar_dados()
     obter_token_meli()
 
