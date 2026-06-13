@@ -660,8 +660,10 @@ def montar_mensagem(oferta):
         msg += f"💰 <b>{formatar_preco(oferta['preco_atual'])}</b>\n\n"
 
     msg += f"{rodape}\n\n"
-    msg += f"🔗 <a href='{oferta['link']}'>👉 CLIQUE AQUI PARA COMPRAR</a>\n\n"
-    msg += "📢 @promostechbr01 | Promos Tech BR"
+    msg += f"🔗 👉 CLIQUE AQUI PARA COMPRAR:\n{oferta['link']}\n\n"
+    msg += "📢 <b>Promos Tech BR</b>\n"
+    msg += "📱 Telegram: t.me/promostechbr01\n"
+    msg += "💬 WhatsApp: wa.me/channel/0029VbDjn0V0bIdqSEzE7X3B"
     return msg
 
 
@@ -726,8 +728,10 @@ def postar_amazon():
     msg += f"📉 <b>{desconto}% de desconto!</b>\n"
     msg += f"💵 <b>Economia de {formatar_preco(economia)}!</b>\n\n"
     msg += "⚡ <b>Por tempo limitado!</b>\n\n"
-    msg += f"🔗 <a href='{link}'>👉 CLIQUE AQUI PARA COMPRAR</a>\n\n"
-    msg += "📢 @promostechbr01 | Promos Tech BR"
+    msg += f"🔗 👉 CLIQUE AQUI PARA COMPRAR:\n{link}\n\n"
+    msg += "📢 <b>Promos Tech BR</b>\n"
+    msg += "📱 Telegram: t.me/promostechbr01\n"
+    msg += "💬 WhatsApp: wa.me/channel/0029VbDjn0V0bIdqSEzE7X3B"
 
     enviar_telegram(msg)
     marcar_postado(produto["asin"], produto["nome"], produto["preco_atual"])
